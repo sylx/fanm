@@ -1,0 +1,26 @@
+{
+  "name": "fanm",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "AIがMSX風デモを作り続け、静的サイトへ自動公開する。",
+  "workspaces": [
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "fanm": "tsx packages/batch/src/cli.ts",
+    "check:template": "tsx packages/batch/src/cli.ts check templates/minimal",
+    "gallery:dev": "npm run dev -w @fanm/gallery",
+    "gallery:build": "npm run build -w @fanm/gallery"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vite": "^5.4.0"
+  }
+}

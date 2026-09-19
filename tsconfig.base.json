@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM"],
+    "strict": true,
+    "allowJs": true,
+    "checkJs": false,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "fantasy-msx": ["engine/fantasy-msx/src/index.ts"],
+      "fantasy-msx/*": ["engine/fantasy-msx/*"],
+      "@fanm/work": ["packages/work/src/index.ts"]
+    }
+  }
+}

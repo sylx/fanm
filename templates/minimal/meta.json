@@ -1,0 +1,6 @@
+{
+  "title": "FANM",
+  "description": "最小テンプレート。seedに応じた位置に円が少しずつ描かれていく。",
+  "controls": "",
+  "durationFrames": 1800
+}

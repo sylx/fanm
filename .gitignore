@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.log
+
+# バッチの制作状態（ジョブ、予算台帳、作品庫、ログ）。公開物には含めない
+/var/
+
+# 認証情報を含む実設定
+/config/fanm.json
+.env

@@ -1,0 +1,13 @@
+{
+  "name": "@fanm/batch",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "作品を作るバッチ処理。企画・生成・検査・予算・作品庫・公開を回す。chevron上でCoolifyが常駐させる。",
+  "bin": {
+    "fanm": "./src/cli.ts"
+  },
+  "dependencies": {
+    "@fanm/work": "*"
+  }
+}

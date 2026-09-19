@@ -1,0 +1,14 @@
+{
+  "name": "@fanm/gallery",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "ギャラリーサイト。固定のプレイヤーと目録。Cloudflare Workersで配信する。閲覧時にAI APIは呼ばない。",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@fanm/work": "*"
+  }
+}

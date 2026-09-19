@@ -1,0 +1,10 @@
+{
+  "name": "@fanm/work",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "作品の共通形式。バッチ・ギャラリー・生成コードが共有する唯一の契約。",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

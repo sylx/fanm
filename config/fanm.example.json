@@ -1,0 +1,23 @@
+{
+  "provider": {
+    "name": "anthropic",
+    "model": "claude-sonnet-5",
+    "apiKeyEnv": "ANTHROPIC_API_KEY"
+  },
+  "budget": {
+    "monthlyUsd": 12,
+    "perWorkUsd": 0.5,
+    "maxOutputTokens": 16000
+  },
+  "production": {
+    "attemptsPerDay": 4,
+    "maxRepairs": 2
+  },
+  "publish": {
+    "target": "github-pages",
+    "intervalHours": 24
+  },
+  "notify": {
+    "target": "none"
+  }
+}
