@@ -1,39 +1,66 @@
-// 目録。works/index.json を読み、新着順に並べる。作品は iframe の中で
-// 再生し、切り替えるたびに iframe ごと作り直して実行環境を捨てる。
+// 目録。works/index.json を読み、サムネイルを新しい順に並べる。
 //
-// TODO: 作品ごとのURL（#<id>）、サムネイル、連続再生。
+// 作品そのものはここでは読み込まない。選ばれたときに iframe の中で
+// 動的に読む。切り替えるたびに iframe ごと作り直して実行環境を捨てる。
 
-import type { WorkMeta } from "@fanm/work";
+import type { CatalogEntry } from "./catalog-entry.js";
 
-const catalog = document.querySelector("#catalog") as HTMLUListElement;
+const list = document.querySelector("#catalog") as HTMLUListElement;
 const random = document.querySelector("#random") as HTMLAnchorElement;
-let frame = document.querySelector("#player") as HTMLIFrameElement;
+const stage = document.querySelector("#stage") as HTMLElement;
+const empty = document.querySelector("#empty") as HTMLElement;
 
-function play(id: string): void {
-    const next = frame.cloneNode() as HTMLIFrameElement;
-    next.hidden = false;
-    next.src = `play.html?work=${encodeURIComponent(id)}`;
-    frame.replaceWith(next);
+let frame: HTMLIFrameElement | null = null;
+
+function play(entry: CatalogEntry): void {
+    const next = document.createElement("iframe");
+    next.title = entry.title;
+    next.allow = "autoplay";
+    next.src = `play.html?work=${encodeURIComponent(entry.id)}`;
+    frame?.remove();
     frame = next;
+    stage.hidden = false;
+    stage.querySelector("#now")!.textContent = entry.controls
+        ? `${entry.title} — ${entry.controls}`
+        : entry.title;
+    stage.append(next);
+    location.hash = entry.id;
 }
 
-async function load(): Promise<WorkMeta[]> {
+function card(entry: CatalogEntry): HTMLLIElement {
+    const item = document.createElement("li");
+    const button = document.createElement("button");
+    button.className = "card";
+    const image = document.createElement("img");
+    image.src = entry.thumb;
+    image.alt = "";
+    image.loading = "lazy";
+    const title = document.createElement("strong");
+    title.textContent = entry.title;
+    const description = document.createElement("span");
+    description.textContent = entry.description;
+    button.append(image, title, description);
+    button.addEventListener("click", () => play(entry));
+    item.append(button);
+    return item;
+}
+
+async function load(): Promise<CatalogEntry[]> {
     const response = await fetch("works/index.json");
     if (!response.ok) return [];
-    const works = (await response.json()) as WorkMeta[];
-    return works.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return (await response.json()) as CatalogEntry[];
 }
 
 const works = await load();
-for (const work of works) {
-    const item = document.createElement("li");
-    const button = document.createElement("button");
-    button.textContent = work.title;
-    button.addEventListener("click", () => play(work.id));
-    item.append(button, ` ${work.description}`);
-    catalog.append(item);
+if (!works.length) {
+    empty.hidden = false;
+} else {
+    for (const work of works) list.append(card(work));
+    random.hidden = false;
+    random.addEventListener("click", event => {
+        event.preventDefault();
+        play(works[Math.floor(Math.random() * works.length)]);
+    });
+    const wanted = works.find(w => w.id === location.hash.slice(1));
+    if (wanted) play(wanted);
 }
-random.addEventListener("click", event => {
-    event.preventDefault();
-    if (works.length) play(works[Math.floor(Math.random() * works.length)].id);
-});

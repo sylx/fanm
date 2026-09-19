@@ -9,5 +9,8 @@
   },
   "dependencies": {
     "@fanm/work": "*"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
   }
 }

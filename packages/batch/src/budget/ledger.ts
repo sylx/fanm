@@ -1,21 +1,121 @@
 // 予算台帳。すべてのAPI呼出しは、呼ぶ前に最大想定費用を予約し、
-// 終わってから実際の利用量で精算する。台帳は var/ledger に永続化し、
-// 再起動しても使用額を忘れない。
+// 終わってから実際の利用量で精算する。
 //
-// TODO: 実装。請求の有無が不明な失敗は、予約額のまま確定させる。
+// 台帳は月ごとに <VAR>/ledger/YYYY-MM.json へ書く。書くたびに一時ファイル
+// から置き換えるので、途中で落ちても壊れた台帳は残らない。予約したまま
+// 落ちた呼出しは、次に読んだときも予約額のまま数える。
 
-export interface Reservation {
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+
+export interface Entry {
     readonly id: string;
     readonly jobId: string;
-    /** 予約した最大額（USD）。 */
+    readonly purpose: string;
+    readonly at: string;
     readonly maxUsd: number;
+    /** reserved: 精算前。settled: 実額で確定。unknown: 請求の有無が分からず予約額で確定。 */
+    status: "reserved" | "settled" | "unknown";
+    usd?: number;
+    tokens?: { input: number; cached: number; output: number; reasoning: number };
 }
 
-export interface Ledger {
-    /** 月間上限・作品上限を超えるなら null を返し、呼出しを止める。 */
-    reserve(jobId: string, maxUsd: number): Reservation | null;
-    settle(reservation: Reservation, actualUsd: number): void;
+export interface Limits {
+    readonly monthlyUsd: number;
+    readonly perWorkUsd: number;
+}
+
+export class BudgetExceeded extends Error {
+    constructor(message: string, readonly scope: "month" | "work") {
+        super(message);
+    }
+}
+
+const month = (at: Date) => at.toISOString().slice(0, 7);
+
+/** 確定額。精算前と不明は予約額で数える。 */
+const cost = (entry: Entry) => entry.status === "settled" ? entry.usd ?? 0 : entry.maxUsd;
+
+export class Ledger {
+    constructor(private readonly dir: string, private readonly limits: Limits) {
+        mkdirSync(dir, { recursive: true });
+    }
+
+    private path(at = new Date()): string {
+        return join(this.dir, `${month(at)}.json`);
+    }
+
+    private read(path = this.path()): Entry[] {
+        return existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) as Entry[] : [];
+    }
+
+    private write(entries: Entry[], path = this.path()): void {
+        writeFileSync(`${path}.tmp`, JSON.stringify(entries, null, 2));
+        renameSync(`${path}.tmp`, path);
+    }
+
+    spentThisMonth(): number {
+        return this.read().reduce((n, e) => n + cost(e), 0);
+    }
+
+    /** ジョブの費用。月をまたいだジョブもあるので前月の台帳も見る。 */
+    spentOnJob(jobId: string): number {
+        const now = new Date();
+        const last = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+        return [this.path(last), this.path(now)]
+            .flatMap(p => this.read(p))
+            .filter(e => e.jobId === jobId)
+            .reduce((n, e) => n + cost(e), 0);
+    }
+
+    /** 上限を超えるなら BudgetExceeded を投げ、呼出しをさせない。 */
+    reserve(jobId: string, purpose: string, maxUsd: number): Entry {
+        const entries = this.read();
+        const month = entries.reduce((n, e) => n + cost(e), 0);
+        if (month + maxUsd > this.limits.monthlyUsd) {
+            throw new BudgetExceeded(`月間予算: 使用 $${month.toFixed(4)} + 予約 $${maxUsd.toFixed(4)} > $${this.limits.monthlyUsd}`, "month");
+        }
+        const job = this.spentOnJob(jobId);
+        if (job + maxUsd > this.limits.perWorkUsd) {
+            throw new BudgetExceeded(`作品予算: 使用 $${job.toFixed(4)} + 予約 $${maxUsd.toFixed(4)} > $${this.limits.perWorkUsd}`, "work");
+        }
+        const entry: Entry = {
+            id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+            jobId, purpose, at: new Date().toISOString(), maxUsd, status: "reserved"
+        };
+        entries.push(entry);
+        this.write(entries);
+        return entry;
+    }
+
+    /**
+     * 予約のまま残っているものを、予約額で確定する。前回の異常終了の後始末で、
+     * 鍵を取ってから（ほかに動いているプロセスがないと分かってから）呼ぶ。
+     */
+    sweepReserved(): number {
+        const entries = this.read();
+        const stale = entries.filter(e => e.status === "reserved");
+        if (!stale.length) return 0;
+        for (const entry of stale) entry.status = "unknown";
+        this.write(entries);
+        return stale.length;
+    }
+
+    settle(entry: Entry, usd: number, tokens?: Entry["tokens"]): void {
+        this.update(entry, e => { e.status = "settled"; e.usd = usd; e.tokens = tokens; });
+    }
+
     /** 請求されたか分からない失敗。予約額で確定する。 */
-    settleUnknown(reservation: Reservation): void;
-    spentThisMonth(): number;
+    settleUnknown(entry: Entry): void {
+        this.update(entry, e => { e.status = "unknown"; });
+    }
+
+    private update(entry: Entry, change: (e: Entry) => void): void {
+        const path = this.path(new Date(entry.at));
+        const entries = this.read(path);
+        const found = entries.find(e => e.id === entry.id);
+        if (!found) throw new Error(`台帳に ${entry.id} がない`);
+        change(found);
+        this.write(entries, path);
+    }
 }

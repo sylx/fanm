@@ -13,7 +13,11 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "fanm": "tsx packages/batch/src/cli.ts",
+    "make": "tsx packages/batch/src/cli.ts make",
+    "make:fake": "tsx packages/batch/src/cli.ts make --fake",
+    "publish": "npm run gallery:build && tsx packages/batch/src/cli.ts publish",
     "check:template": "tsx packages/batch/src/cli.ts check templates/minimal",
+    "prompts:api": "tsx packages/batch/src/generate/api-docs.ts",
     "gallery:dev": "npm run dev -w @fanm/gallery",
     "gallery:build": "npm run build -w @fanm/gallery"
   },

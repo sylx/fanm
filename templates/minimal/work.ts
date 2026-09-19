@@ -3,7 +3,7 @@
 // 状態はすべて factory の中に閉じ込め、起動のたびに作り直す。
 // 時刻は frame、乱数は env.random だけを使う。
 
-import type { App } from "fantasy-msx";
+import { compile, opllVoice, psgVoice, type App } from "fantasy-msx";
 import type { WorkFactory } from "@fanm/work";
 
 const create: WorkFactory = env => {
@@ -14,10 +14,16 @@ const create: WorkFactory = env => {
         color: 2 + Math.floor(env.random() * 14)
     }));
 
+    const theme = compile([
+        { voice: psgVoice(0), mml: "t120 v11 l8 o5 [cegb >c<bge]4" },
+        { voice: opllVoice(0), mml: "t120 @3 v10 l1 o3 [c<a>fg]" }
+    ]);
+
     const app: App = {
-        init({ gfx }) {
+        init({ gfx, bgm }) {
             gfx.now.clear(1);
             gfx.now.text(88, 100, "FANM", 15);
+            bgm.play(theme, { loop: true });
         },
         update() {
             frame++;

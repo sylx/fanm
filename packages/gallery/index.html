@@ -4,11 +4,46 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>fanM</title>
+  <style>
+    :root { color-scheme: dark; --bg: #0b0b10; --fg: #e8e6f0; --dim: #8d89a5; --line: #23222e; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 0 16px 48px; background: var(--bg); color: var(--fg);
+           font: 15px/1.6 system-ui, sans-serif; }
+    header { display: flex; align-items: baseline; gap: 16px; max-width: 1100px;
+             margin: 0 auto; padding: 24px 0 16px; }
+    h1 { font-size: 20px; letter-spacing: .3em; margin: 0; }
+    header p { color: var(--dim); margin: 0; font-size: 13px; }
+    a { color: inherit; }
+    main { max-width: 1100px; margin: 0 auto; }
+    #stage { margin: 0 0 32px; }
+    #stage iframe { width: 100%; aspect-ratio: 4 / 3; border: 1px solid var(--line);
+                    background: #000; display: block; }
+    #now { display: block; color: var(--dim); font-size: 13px; padding: 8px 0; }
+    ul { list-style: none; display: grid; gap: 16px; padding: 0; margin: 0;
+         grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+    .card { display: grid; gap: 4px; width: 100%; text-align: left; cursor: pointer;
+            background: none; border: 1px solid var(--line); border-radius: 6px;
+            padding: 8px; color: inherit; font: inherit; }
+    .card:hover, .card:focus-visible { border-color: var(--fg); }
+    .card img { width: 100%; aspect-ratio: 4 / 3; object-fit: contain; display: block;
+                background: #000; border-radius: 3px; }
+    .card strong { font-weight: 600; letter-spacing: .08em; }
+    .card span { color: var(--dim); font-size: 13px;
+                 display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+    #empty { color: var(--dim); }
+  </style>
 </head>
 <body>
-  <header><h1>fanM</h1><a id="random" href="#">ランダム再生</a></header>
+  <header>
+    <h1>fanM</h1>
+    <p>AIがつくり続けるMSX2のデモ</p>
+    <p><a id="random" href="#" hidden>ランダム再生</a></p>
+  </header>
   <main>
-    <iframe id="player" title="作品" sandbox="allow-scripts allow-same-origin" hidden></iframe>
+    <section id="stage" hidden>
+      <span id="now"></span>
+    </section>
+    <p id="empty" hidden>まだ作品がありません。</p>
     <ul id="catalog"></ul>
   </main>
   <script type="module" src="./src/catalog.ts"></script>

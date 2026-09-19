@@ -50,9 +50,25 @@ fanM/
 - 時刻はフレーム、乱数は `env.random`（seed 付き mulberry32）。
 - `meta.json` のうち、AI が書くのは `WorkDescription`（タイトル、説明、操作、長さ）。id、日時、エンジンのコミット、seed、サムネイルはバッチが足す。
 
-## 公開時の作品とエンジンの版
+## 公開物の組み立て（`fanm publish`）
 
-作品は fantasy-msx を外部依存としてビルドした `works/<id>/work.js` にする予定。エンジンは `engine/<commit>/` に版ごとに置き、プレイヤーは作品の `meta.engine` に合う版を import map で渡す。こうすればエンジンを更新しても過去作品はビルドし直さずに再生できる。未実装。
+毎回すべてを作り直さない。作品もエンジンも、一度ビルドしたらそのまま置いておく。
+
+```text
+var/site/                        これがそのまま公開する中身
+├─ index.html, assets/           ギャラリーの殻（gallery のビルドを写す。滅多に変わらない）
+├─ play.html                     プレイヤー
+├─ engine/<commit>.js            エンジン。コミットごとに一つ（213KB）
+├─ works/<id>/work.js            作品。エンジンを含まず 3KB 程度
+├─ works/<id>/thumb.png          サムネイル
+└─ works/index.json              目録。新しい順。毎回書き直す（小さい）
+```
+
+- 作品は `import { ... } from "fantasy-msx"` を `../../engine/<commit>.js` への import に置き換えてビルドする（`publish/build.ts`）。プレイヤーも目録の `engine` を見て同じファイルを動的に読む。**プレイヤーがエンジンを静的に import してはいけない**。二つ目のエンジンが混ざる。
+- だからエンジンを更新しても、過去の作品はビルドし直さずに動く。新しいコミットの `engine/*.js` が一つ増えるだけ。
+- ギャラリーは目録だけを読み、作品は選ばれたときに iframe の中で動的に読む。
+
+送り先（Cloudflare）はまだ決めていない。`publish/publisher.ts` に選択肢と、どちらでもこの組み立てが変わらない理由を書いてある。
 
 ## 開発
 
@@ -61,13 +77,29 @@ git submodule update --init         # engine/fantasy-msx（WebMSX は不要）
 npm install
 npm run typecheck                   # fanM とエンジンのソースを合わせて型検査
 npm run check:template              # 最小テンプレートをヘッドレスで動かし var/check/minimal に撮影
-npm run gallery:dev                 # play.html?work=minimal でテンプレートを再生
+npm run gallery:dev                 # play.html?work=<id> で手元の作品やテンプレートを再生
+npm run make                        # AIで一作品作る（走っている間に叩くと、その様子が見える）
+npm run publish                     # 採用作から var/site/ を組み立てる
 ```
 
 ## 現状
 
 | 部分 | できていること | まだないもの |
 | --- | --- | --- |
-| バッチ | `fanm check`：作品をヘッドレスで動かして撮影する | AI呼出し、企画、生成・修正、予算台帳、ジョブ保存、常駐ループ、Dockerfile |
-| ギャラリー | 目録ページと iframe プレイヤーの雛形。開発時は `templates/` の作品を再生できる | 実作品の読込（エンジンの版ごとの配信）、サムネイル、作品ごとのURL、Workers の設定 |
-| つなぎ | 作品形式（`@fanm/work`） | 作品を Cloudflare へ届ける方式（Workers 再デプロイか R2 か）|
+| バッチ | `fanm make`：企画 → 生成 → 検査 → 修正（最大2回）→ 採用/不採用 を一つのジョブとして回す。ジョブ状態と予算台帳を保存し、途中から再開できる。DeepSeek 接続と、APIキーなしで試す偽のAI（`--fake`）。検査は静的検査・型検査・隔離実行・撮影・画面の数値判定 | 常駐ループとスケジューラー（`fanm run`）、Dockerfile、公開（`fanm publish`）、不採用作の掃除、通知 |
+| ギャラリー | サムネイルの一覧、作品ごとのURL（`#<id>`）、ランダム再生、iframe の中での動的読込。開発時は未ビルドの手元の作品も再生できる | 連続再生、お気に入り |
+| つなぎ | `fanm publish` が `<VAR>/site/` に公開物を組み立てる。作品とエンジンは増えた分だけビルドする | Cloudflare へ送る部分（Workers Static Assets か R2 か未定）|
+
+## バッチの制作状態（`<VAR>`、既定は `var/`、`FANM_VAR` で変更）
+
+```text
+var/
+├─ jobs/<id>/            ジョブ。job.json と attempt-N/（AIの応答、work.ts、meta.json、検査結果、撮影）
+├─ works/<id>/public/    採用作のうちギャラリーに出すもの（work.ts, meta.json, thumbnail.png）
+├─ works/<id>/private/   出さないもの（企画、検査結果、AI 呼出しの記録）
+├─ ledger/YYYY-MM.json   予算台帳（予約と精算）
+├─ site/                 公開物（fanm publish が組み立てる）
+├─ run.log / run.lock    制作のログと、二重起動を防ぐ鍵
+├─ check/                fanm check の作業場所
+└─ fake/                 --fake のときは全部こちら
+```
