@@ -153,6 +153,14 @@ GitHub から Coolify の webhook を直接叩かせることもできるが、�
 
 コミットの文に `[skip ci]` か `[skip cd]` が入っていれば、Coolify は配り直さない（Actions は成功のまま）。配り直しを自分で始めたいときは Actions の `deploy` を workflow_dispatch で回すか、Coolify の Redeploy を押す。
 
+秘密を入れる前に置いたときや、ワークフローを足した当の push では走らないことがある（実際に走らなかった）。最初の一回は手動で回す。
+
+```bash
+gh auth switch --user sylx          # 秘密の登録や実行し直しには、持ち主の権限が要る
+gh workflow run deploy.yml --ref main
+gh run watch
+```
+
 ## 手元の作品を持っていく
 
 **これを先にやる。** 空のまま常駐を始めると、最初の公開で今出ている作品が消える。公開物は版ごと差し替わるので、作品庫が空なら「作品が0件のギャラリー」がそのまま出てしまう。
