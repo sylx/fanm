@@ -41,6 +41,8 @@ export interface Config {
         readonly accountIdEnv: string;
         /** 公開の間隔（時間）。制作より粗くして、溜まった作品をまとめて出す。 */
         readonly everyHours: number;
+        /** 公開したあとの居場所。知らせに貼るリンクに使うだけで、送り先は wrangler.jsonc が決める。 */
+        readonly siteUrl: string;
     };
 }
 
@@ -56,13 +58,15 @@ export const DEFAULTS: Config = {
     // 上限まで考え切って本文を返さないことがあった（実測で2回続けて空）。
     // 思考なしなら23秒・3千トークンでコードが返り、検査も通る。
     generation: { planMaxTokens: 4000, generateMaxTokens: 16000, reasoningEffort: "none" },
-    production: { attemptsPerDay: 4, maxRepairs: 2 },
+    // 一作品 $0.02〜0.03 で収まっているので、一日6回でも月 $5 前後に留まる。
+    production: { attemptsPerDay: 6, maxRepairs: 2 },
     publish: {
         target: "cloudflare",
         wranglerConfig: "wrangler.jsonc",
         apiTokenEnv: "CLOUDFLARE_API_TOKEN",
         accountIdEnv: "CLOUDFLARE_ACCOUNT_ID",
-        everyHours: 6
+        everyHours: 6,
+        siteUrl: "https://fanm.oyabanare.com"
     }
 };
 

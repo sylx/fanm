@@ -73,6 +73,11 @@ export class Archive {
             .sort();
     }
 
+    /** 公開している作品の説明。知らせに使う。 */
+    meta(id: string): WorkMeta {
+        return JSON.parse(readFileSync(join(this.dir, id, "public", "meta.json"), "utf8")) as WorkMeta;
+    }
+
     /** 採用済み作品の企画。新しい順。企画の偏りを避けるために使う。 */
     plans(limit = 40): Plan[] {
         return readdirSync(this.dir)

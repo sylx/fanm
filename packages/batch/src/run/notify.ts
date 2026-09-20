@@ -1,5 +1,8 @@
-// 人を呼ぶ。日常の失敗（作品が一つ不採用になった、通信が一度切れた）では呼ばない。
-// 呼ぶのは、放っておいても直らないこと（鍵切れ、権限不足、何度やっても同じ失敗）だけ。
+// 知らせを送る。道は二つある。
+//
+//     tell  人を呼ぶ。放っておいても直らないこと（鍵切れ、権限不足、何度やっても
+//           同じ失敗）だけ。日常の失敗では呼ばない。同じ用件は間引く
+//     say   伝えるだけ。作品が出たときなど。覚え書きにも残さず、間引きもしない
 //
 // 知らせ先は環境変数 FANM_NOTIFY_WEBHOOK。Discord でも Slack でも受けられるよう、
 // content と text の両方を入れた JSON を送る。設定がなければログと <VAR>/run.json
@@ -27,6 +30,11 @@ export class Notifier {
         if (last && now.getTime() - Date.parse(last) < REPEAT_MS) return;
         this.store.change(s => { s.notified[key] = now.toISOString(); });
         this.log.line(`人の対応が必要: ${message}`);
+        await this.send(`fanM: ${message}`);
+    }
+
+    /** 伝えるだけ。届かなくても制作は続く。 */
+    async say(message: string): Promise<void> {
         await this.send(`fanM: ${message}`);
     }
 

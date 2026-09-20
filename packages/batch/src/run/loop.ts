@@ -173,6 +173,25 @@ export async function runLoop(options: LoopOptions): Promise<number> {
         return archive.ids().filter(id => !sent.has(id));
     }
 
+    /**
+     * 出た作品を知らせる。人を呼ぶのとは別の、ただの便り。
+     * サムネイルのURLを添えて、受け取った側で絵が見えるようにする。
+     */
+    async function announce(ids: readonly string[]): Promise<void> {
+        if (!ids.length) return;
+        const site = config.publish.siteUrl.replace(/\/$/, "");
+        const lines = [`新しい作品が出た（${ids.length}件）`];
+        // 新しい順に。多いときは絵を並べても読みにくいので、最初の4件だけ。
+        const shown = [...ids].reverse().slice(0, 4);
+        for (const id of shown) {
+            const meta = archive.meta(id);
+            const summary = meta.description.length > 100 ? `${meta.description.slice(0, 100)}…` : meta.description;
+            lines.push("", `${meta.title} — ${summary}`, `${site}/#${id}`, `${site}/works/${id}/thumb.png`);
+        }
+        if (ids.length > shown.length) lines.push("", `ほか ${ids.length - shown.length} 件`);
+        await notifier.say(lines.join("\n"));
+    }
+
     /** 公開物を組み立てて送る。送れたら true。 */
     async function publishOnce(): Promise<boolean> {
         const fresh = unpublished();
@@ -196,6 +215,7 @@ export async function runLoop(options: LoopOptions): Promise<number> {
             log.line(`${options.publisher.name} へ公開した`);
             notifier.clear("publish");
             done();
+            await announce(fresh);
             return true;
         } catch (e) {
             if (!(e instanceof PublishError)) throw e;

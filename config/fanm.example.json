@@ -15,7 +15,7 @@
     "reasoningEffort": "high"
   },
   "production": {
-    "attemptsPerDay": 4,
+    "attemptsPerDay": 6,
     "maxRepairs": 2
   },
   "publish": {
@@ -23,6 +23,7 @@
     "wranglerConfig": "wrangler.jsonc",
     "apiTokenEnv": "CLOUDFLARE_API_TOKEN",
     "accountIdEnv": "CLOUDFLARE_ACCOUNT_ID",
-    "everyHours": 6
+    "everyHours": 6,
+    "siteUrl": "https://fanm.oyabanare.com"
   }
 }
