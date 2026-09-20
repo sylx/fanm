@@ -64,6 +64,15 @@ export class DeepSeek implements Provider {
         return (maxInputTokens(request) * this.price.miss + request.maxOutputTokens * this.price.output) / 1e6;
     }
 
+    /**
+     * 途中までの費用の見当。中断された呼出しを、予約額そのままではなく
+     * これで確定する。届いた文字数から出したおおよその値。
+     */
+    estimatePartialUsd(request: CompletionRequest, outputChars: number, at = new Date()): number {
+        const rate = isPeak(at) ? 1 : 0.5;
+        return rate * (maxInputTokens(request) * this.price.miss + (outputChars / 3) * this.price.output) / 1e6;
+    }
+
     async complete(request: CompletionRequest, onDelta?: OnDelta): Promise<Completion> {
         const started = new Date();
         let response: globalThis.Response;
@@ -75,9 +84,11 @@ export class DeepSeek implements Provider {
                     model: this.model,
                     messages: request.messages,
                     max_tokens: request.maxOutputTokens,
-                    thinking: request.reasoningEffort === "none"
-                        ? { type: "disabled" }
-                        : { type: "enabled", reasoning_effort: request.reasoningEffort },
+                    // reasoning_effort は thinking の中ではなくトップレベル。
+                    // ただし low を渡しても上限まで考えることがあるので、頼りにしない。
+                    ...(request.reasoningEffort === "none"
+                        ? { thinking: { type: "disabled" } }
+                        : { thinking: { type: "enabled" }, reasoning_effort: request.reasoningEffort }),
                     ...(request.json ? { response_format: { type: "json_object" } } : {}),
                     // 思考が長いので、届いた端から見せられるように流してもらう
                     stream: true,

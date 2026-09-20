@@ -31,8 +31,21 @@ export async function call(
 ): Promise<Completion & { log: CallLog }> {
     for (let attempt = 0; ; ++attempt) {
         const entry = ledger.reserve(jobId, purpose, provider.estimateMaxUsd(request));
+        // 届いた分から見積りを書き続ける。途中で殺されても、予約額まるごとではなく
+        // ここまでの見積りで確定できる。
+        let chars = 0;
+        let lastWrite = 0;
+        const watch: OnDelta = (kind, text) => {
+            chars += text.length;
+            const now = Date.now();
+            if (now - lastWrite > 5000) {
+                lastWrite = now;
+                ledger.progress(entry, provider.estimatePartialUsd(request, chars));
+            }
+            onDelta?.(kind, text);
+        };
         try {
-            const result = await provider.complete(request, onDelta);
+            const result = await provider.complete(request, watch);
             const { usage } = result;
             ledger.settle(entry, usage.usd, {
                 input: usage.inputTokens, cached: usage.cachedInputTokens,

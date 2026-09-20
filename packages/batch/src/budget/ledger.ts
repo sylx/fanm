@@ -33,8 +33,11 @@ export class BudgetExceeded extends Error {
 
 const month = (at: Date) => at.toISOString().slice(0, 7);
 
-/** 確定額。精算前と不明は予約額で数える。 */
-const cost = (entry: Entry) => entry.status === "settled" ? entry.usd ?? 0 : entry.maxUsd;
+/**
+ * 確定額。走っている最中のものは予約額で数える（使い過ぎを防ぐため高く見る）。
+ * 中断して確定したものは、途中まで届いた分の見積りがあればそれで数える。
+ */
+const cost = (entry: Entry) => entry.status === "reserved" ? entry.maxUsd : entry.usd ?? entry.maxUsd;
 
 export class Ledger {
     constructor(private readonly dir: string, private readonly limits: Limits) {
@@ -88,15 +91,21 @@ export class Ledger {
         return entry;
     }
 
+    /** 走っている最中の見積り。中断されたとき、これが確定額になる。 */
+    progress(entry: Entry, usd: number): void {
+        this.update(entry, e => { if (e.status === "reserved") e.usd = usd; });
+    }
+
     /**
-     * 予約のまま残っているものを、予約額で確定する。前回の異常終了の後始末で、
+     * 予約のまま残っているものを確定する。途中経過があればその額、
+     * なければ予約額。前回の異常終了の後始末で、
      * 鍵を取ってから（ほかに動いているプロセスがないと分かってから）呼ぶ。
      */
     sweepReserved(): number {
         const entries = this.read();
         const stale = entries.filter(e => e.status === "reserved");
         if (!stale.length) return 0;
-        for (const entry of stale) entry.status = "unknown";
+        for (const entry of stale) entry.status = "unknown";     // usd は progress が入れた見積りのまま
         this.write(entries);
         return stale.length;
     }

@@ -28,6 +28,10 @@ export class FakeProvider implements Provider {
         return 0.01;
     }
 
+    estimatePartialUsd(): number {
+        return 0.001;
+    }
+
     async complete(request: CompletionRequest, onDelta?: OnDelta): Promise<Completion> {
         onDelta?.("reasoning", "（偽のAIなので考えていない）");
         const usage = { inputTokens: 1000, cachedInputTokens: 0, outputTokens: 500, reasoningTokens: 0, usd: 0.001 };

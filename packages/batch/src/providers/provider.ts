@@ -36,6 +36,8 @@ export interface Provider {
     readonly model: string;
     /** 予約に使う最大想定費用（USD）。高めに見積もる。 */
     estimateMaxUsd(request: CompletionRequest): number;
+    /** 途中まででいくら使ったかの見当。中断された呼出しの精算に使う。 */
+    estimatePartialUsd(request: CompletionRequest, outputChars: number): number;
     complete(request: CompletionRequest, onDelta?: OnDelta): Promise<Completion>;
 }
 

@@ -96,9 +96,11 @@ function pastAttempts(ctx: MakeContext, job: Job): PastAttempt[] {
 async function generate(ctx: MakeContext, job: Job): Promise<void> {
     const n = job.attempts.length + 1;
     const { generation } = ctx.config;
+    // 前回、思考だけで出力上限に達していたら、思考を切って頼み直す。
+    const thinkingRanAway = (job.emptyResponses ?? 0) > 0;
     const request = generateRequest(job.plan!, pastAttempts(ctx, job), {
         maxOutputTokens: generation.generateMaxTokens,
-        reasoningEffort: generation.reasoningEffort
+        reasoningEffort: thinkingRanAway ? "none" : generation.reasoningEffort
     });
     const result = await call(ctx.provider, ctx.ledger, job.id, n === 1 ? "generate" : `repair-${n - 1}`, request, deltas(ctx.log));
     job.calls.push(result.log);
@@ -108,7 +110,7 @@ async function generate(ctx: MakeContext, job: Job): Promise<void> {
     if (!result.text.trim()) {
         job.emptyResponses = (job.emptyResponses ?? 0) + 1;
         ctx.log.line(`${job.id}: 本文が空で返った（${job.emptyResponses}回目）`);
-        if (job.emptyResponses >= 2) reject(ctx, job, "本文が空の応答が続いた。思考の量か出力上限を見直す");
+        if (job.emptyResponses >= 3) reject(ctx, job, "本文が空の応答が続いた。思考の量か出力上限を見直す");
         return;
     }
 

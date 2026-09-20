@@ -42,8 +42,10 @@ export const DEFAULTS: Config = {
         baseUrl: "https://api.deepseek.com"
     },
     budget: { monthlyUsd: 12, perWorkUsd: 0.5 },
-    // maxTokens は思考の分も含む。high だと思考だけで使い切ってコードが返らなかった。
-    generation: { planMaxTokens: 4000, generateMaxTokens: 40000, reasoningEffort: "low" },
+    // maxTokens は思考の分も含む。DeepSeek V4 Pro は reasoning_effort: low でも
+    // 上限まで考え切って本文を返さないことがあった（実測で2回続けて空）。
+    // 思考なしなら23秒・3千トークンでコードが返り、検査も通る。
+    generation: { planMaxTokens: 4000, generateMaxTokens: 16000, reasoningEffort: "none" },
     production: { attemptsPerDay: 4, maxRepairs: 2 }
 };
 
