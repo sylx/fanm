@@ -13,6 +13,7 @@ import type { Plan } from "../plan/planner.js";
 import type { CompletionRequest, Message } from "../providers/provider.js";
 import { formOf } from "../plan/forms.js";
 import { fill, formBrief, prompt, system, template } from "../prompts.js";
+import { avoidBrief, thin } from "./example.js";
 
 export interface PastAttempt {
     readonly response: string;
@@ -26,6 +27,7 @@ export function generateRequest(
     past: readonly PastAttempt[],
     options: { maxOutputTokens: number; reasoningEffort: CompletionRequest["reasoningEffort"] }
 ): CompletionRequest {
+    const example = template(formOf(plan.form).id);
     const messages: Message[] = [
         system(),
         {
@@ -33,7 +35,9 @@ export function generateRequest(
             content: fill(prompt("generate.md"), {
                 form: formBrief(formOf(plan.form).id),
                 plan: JSON.stringify(plan, null, 2),
-                template: template(formOf(plan.form).id)
+                // 実例はデータを抜いて渡す。そのまま渡すと写しが返ってくる。
+                template: thin(example),
+                avoid: avoidBrief(example)
             })
         }
     ];

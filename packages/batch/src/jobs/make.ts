@@ -15,6 +15,8 @@ import type { Config } from "../config.js";
 import { FormatError, generateRequest, parseFiles, type PastAttempt } from "../generate/generator.js";
 import { formOf, pickForm } from "../plan/forms.js";
 import { parsePlan, planRequest } from "../plan/planner.js";
+import { drawTwist } from "../plan/variations.js";
+import { template } from "../prompts.js";
 import { call } from "../providers/call.js";
 import type { OnDelta, Provider } from "../providers/provider.js";
 import type { Log } from "../run/log.js";
@@ -65,11 +67,15 @@ async function plan(ctx: MakeContext, job: Job): Promise<void> {
     // 型はAIに選ばせない。過去作に少ない型を当てる。同じジョブなら毎回同じ型。
     const form = job.form ? formOf(job.form) : pickForm(past, createRandom(job.seed));
     job.form = form.id;
+    // 縛りも引く。型が同じでも段取りが前と変わるように。ジョブの種から引くので、
+    // 企画をやり直しても同じ縛りになる。
+    const twist = drawTwist(form.id, past, createRandom(job.seed ^ 0x7c157));
+    ctx.log.line(`${job.id}: 型は${form.label}、縛りは ${twist.map(t => `${t.axis}=${t.option}`).join(" / ")}`);
     const result = await call(ctx.provider, ctx.ledger, job.id, "plan",
-        planRequest(past, form, ctx.config.generation.planMaxTokens), deltas(ctx.log));
+        planRequest(past, form, twist, ctx.config.generation.planMaxTokens), deltas(ctx.log));
     job.calls.push(result.log);
     try {
-        job.plan = parsePlan(result.text, form);
+        job.plan = parsePlan(result.text, form, twist);
     } catch (e) {
         // 企画の JSON が壊れているなら、次のループでもう一度企画させる。3回までで諦める。
         ctx.log.line(`${job.id}: 企画を読めない（${(e as Error).message}）`);
@@ -139,7 +145,14 @@ async function generate(ctx: MakeContext, job: Job): Promise<void> {
 async function check(ctx: MakeContext, job: Job): Promise<void> {
     const attempt = job.attempts[job.attempts.length - 1];
     const dir = ctx.jobs.attemptDir(job, attempt.n);
-    const report = await checkWork(dir, job.seed);
+    // 実例と、同じ型の過去作を見比べる相手に渡す。名前だけ変えた写しを採用しない。
+    // 偽のAIは実例をそのまま返すので、そのときは見比べない。
+    const form = formOf(job.form).id;
+    const references = ctx.provider.name === "fake" ? [] : [
+        { label: `実例（templates/${form}/work.ts）`, source: template(form) },
+        ...ctx.archive.sources(form, 3)
+    ];
+    const report = await checkWork(dir, job.seed, { references, maxOverlap: ctx.config.generation.maxOverlap });
     writeFileSync(join(dir, "report.json"), JSON.stringify(report, null, 2));
     finishAttempt(ctx, job, { ok: report.ok, stage: report.stage, problems: report.problems });
 

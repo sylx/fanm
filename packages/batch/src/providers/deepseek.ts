@@ -89,6 +89,7 @@ export class DeepSeek implements Provider {
                     ...(request.reasoningEffort === "none"
                         ? { thinking: { type: "disabled" } }
                         : { thinking: { type: "enabled" }, reasoning_effort: request.reasoningEffort }),
+                    ...(request.temperature === undefined ? {} : { temperature: request.temperature }),
                     ...(request.json ? { response_format: { type: "json_object" } } : {}),
                     // 思考が長いので、届いた端から見せられるように流してもらう
                     stream: true,

@@ -17,6 +17,8 @@ export interface CompletionRequest {
     readonly messages: readonly Message[];
     readonly maxOutputTokens: number;
     readonly reasoningEffort: "none" | "low" | "high" | "max";
+    /** 出力の散らばり。省くと事業者の既定。企画は散らしたいので高くする。 */
+    readonly temperature?: number;
     /** JSON オブジェクトだけを返させる。 */
     readonly json?: boolean;
 }

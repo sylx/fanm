@@ -2,9 +2,12 @@
 // バッチ処理の入口。
 //
 //     fanm run [--once]         常駐して制作を回し続ける。本番（Coolify）はこれを動かす
-//     fanm make [--fake]        ジョブを一つ最後まで進める。途中のジョブがあればその続きから
+//     fanm make [--fake] [--form <型>]
+//                               ジョブを一つ最後まで進める。途中のジョブがあればその続きから。
+//                               --form は型を指定する（手元で一つの型を試すとき用。本番は指定しない）
 //     fanm makenow [--local]    次の間隔を待たずに一作品つくって公開する。常駐が動いていれば横から頼む
 //     fanm check <dir>...       work.ts と meta.json のあるディレクトリを検査する（AIは呼ばない）
+//     fanm overlap              採用作が実例や過去作をどれだけ写しているかを並べる（AIは呼ばない）
 //     fanm status               いまどうなっているか。動いていなければ終了コード 1
 //     fanm budget               今月の使用額
 //     fanm publish [--local]    採用作から公開物を組み立て（<VAR>/site/）、Cloudflare へ送る
@@ -20,9 +23,12 @@ import { basename, join, resolve } from "node:path";
 import { Archive } from "./archive/archive.js";
 import { BudgetExceeded, Ledger } from "./budget/ledger.js";
 import { checkWork } from "./check/check.js";
+import { overlap } from "./check/overlap.js";
 import { loadConfig, VAR } from "./config.js";
 import { JobStore } from "./jobs/job.js";
 import { make } from "./jobs/make.js";
+import { FORMS, formOf } from "./plan/forms.js";
+import { template } from "./prompts.js";
 import { DeepSeek } from "./providers/deepseek.js";
 import { CloudflarePublisher, PublishError, type Publisher } from "./publish/publisher.js";
 import { assemble } from "./publish/site.js";
@@ -72,6 +78,18 @@ async function runMake(): Promise<number> {
 
     const jobs = new JobStore(join(root, "jobs"));
     const job = jobs.unfinished()[0] ?? jobs.create();
+    // 手元で一つの型を試すための指定。企画が済んでいないジョブにだけ効く。
+    const wanted = args.find(a => a.startsWith("--form="))?.slice("--form=".length)
+        ?? (args.includes("--form") ? args[args.indexOf("--form") + 1] : undefined);
+    if (wanted) {
+        if (!FORMS.some(f => f.id === wanted)) throw new Error(`型 ${wanted} はない。あるのは ${FORMS.map(f => f.id).join(", ")}`);
+        if (job.plan) log.line(`${job.id} は企画済みなので --form は効かない（型は ${job.form}）`);
+        else {
+            job.form = wanted;
+            jobs.save(job);
+            log.line(`型を ${wanted} に指定した`);
+        }
+    }
     log.line(`${job.id}: ${job.state} から開始${fake ? "（偽のAI）" : ""}`);
     try {
         const done = await make({ config, provider: provider(), ledger: budget, jobs, archive: new Archive(join(root, "works")), log }, job);
@@ -150,6 +168,39 @@ async function runCheck(dir: string): Promise<number> {
     return report.ok ? 0 : 1;
 }
 
+/**
+ * 採用作の重なりを並べる。多様性を目で見るため。AIは呼ばない。
+ *
+ *     text  そのままの語の並びの一致率。0.35 を超えると書き写し扱いで作り直させる
+ *     shape 名前と数を伏せた並びの一致率。同じ API を使えば上がるので、目安として見る
+ */
+function runOverlap(): number {
+    const archive = new Archive(join(root, "works"));
+    const ids = archive.ids().reverse();
+    if (!ids.length) {
+        console.log(`${join(root, "works")} に作品がない`);
+        return 0;
+    }
+    console.log(`上限 ${config.generation.maxOverlap}（text がこれを超えると書き写し扱い）\n`);
+    let over = 0;
+    for (const id of ids) {
+        const plan = archive.plan(id);
+        const form = formOf(plan?.form).id;
+        const source = readFileSync(join(root, "works", id, "public", "work.ts"), "utf8");
+        const others = archive.sources(form, 4).filter(o => o.id !== id);
+        const refs = [{ label: `実例 ${form}`, source: template(form) }, ...others];
+        console.log(`${id}  [${formOf(plan?.form).label}] ${archive.meta(id).title}`);
+        for (const ref of refs) {
+            const o = overlap(source, ref.source);
+            const mark = o.text > config.generation.maxOverlap ? " ← 写し" : "";
+            if (o.text > config.generation.maxOverlap) over++;
+            console.log(`    text ${o.text.toFixed(3)}  shape ${o.shape.toFixed(3)}  ${ref.label}${mark}`);
+        }
+        for (const t of plan?.twist ?? []) console.log(`    縛り ${t.axis}: ${t.option}`);
+    }
+    return over ? 1 : 0;
+}
+
 /** 送り先。偽のAIで作った作品は公開しない。 */
 function publisher(local: boolean): Publisher | undefined {
     if (local) return undefined;
@@ -212,6 +263,9 @@ switch (command) {
         process.exitCode = failed ? 1 : 0;
         break;
     }
+    case "overlap":
+        process.exitCode = runOverlap();
+        break;
     case "publish": {
         const site = join(root, "site");
         const result = await assemble(join(root, "works"), site);
@@ -233,6 +287,6 @@ switch (command) {
         break;
     }
     default:
-        console.error("usage: fanm run [--once] | make [--fake] | makenow [--local] | check <dir> | status | publish [--local] | budget");
+        console.error("usage: fanm run [--once] | make [--fake] [--form <型>] | makenow [--local] | check <dir> | overlap | status | publish [--local] | budget");
         process.exitCode = 2;
 }

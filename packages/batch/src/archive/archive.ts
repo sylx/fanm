@@ -73,9 +73,35 @@ export class Archive {
             .sort();
     }
 
+    /** 採用作の企画。無ければ undefined（型が入る前に作った作品）。 */
+    plan(id: string): Plan | undefined {
+        const path = join(this.dir, id, "private", "plan.json");
+        return existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) as Plan : undefined;
+    }
+
     /** 公開している作品の説明。知らせに使う。 */
     meta(id: string): WorkMeta {
         return JSON.parse(readFileSync(join(this.dir, id, "public", "meta.json"), "utf8")) as WorkMeta;
+    }
+
+    /**
+     * 同じ型の採用作のコード。新しい順。
+     *
+     * 新しい作品が過去作の書き写しになっていないかを見比べるために使う。企画の
+     * 一覧と違い、こちらはコードそのものなので、数作だけ読む。
+     */
+    sources(form: string, limit = 3): { id: string; label: string; source: string }[] {
+        const out: { id: string; label: string; source: string }[] = [];
+        for (const id of readdirSync(this.dir).sort().reverse()) {
+            if (out.length >= limit) break;
+            const planPath = join(this.dir, id, "private", "plan.json");
+            const workPath = join(this.dir, id, "public", "work.ts");
+            if (!existsSync(planPath) || !existsSync(workPath)) continue;
+            const plan = JSON.parse(readFileSync(planPath, "utf8")) as Plan;
+            if ((plan.form ?? "") !== form) continue;
+            out.push({ id, label: `過去作「${plan.title}」`, source: readFileSync(workPath, "utf8") });
+        }
+        return out;
     }
 
     /** 採用済み作品の企画。新しい順。企画の偏りを避けるために使う。 */

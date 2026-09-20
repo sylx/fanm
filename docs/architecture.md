@@ -107,6 +107,8 @@ npm run typecheck                   # fanM とエンジンのソースを合わ�
 npm run check:templates             # 全テンプレートをヘッドレスで動かし var/check/<型>/ に撮影
 npm run gallery:dev                 # play.html?work=<id> で手元の作品やテンプレートを再生
 npm run make                        # AIで一作品作る（走っている間に叩くと、その様子が見える）
+npm run make -- --form rpg          # 型を指定して作る（手元で一つの型を試すとき。本番は指定しない）
+npm run overlap                     # 採用作が実例や過去作をどれだけ写しているかを並べる
 npm start                           # 常駐して作り続ける（本番のコンテナが動かすのもこれ）
 npm run status                      # いまどうなっているか（動いていなければ終了コード 1）
 npm run publish                     # 採用作から var/site/ を組み立て、Cloudflare へ送る
@@ -117,7 +119,7 @@ npm run publish:local               # 組み立てるところまで（送らな
 
 | 部分 | できていること | まだないもの |
 | --- | --- | --- |
-| バッチ | `fanm make`：企画 → 生成 → 検査 → 修正（最大2回）→ 採用/不採用 を一つのジョブとして回す。ジョブ状態と予算台帳を保存し、途中から再開できる。DeepSeek 接続と、APIキーなしで試す偽のAI（`--fake`）。検査は静的検査・型検査・隔離実行・撮影・画面の数値判定。`fanm run`：残予算と実費から頻度を決めて回し続け、頃合いを見て公開し、直らない問題だけ知らせる。`fanm status` と Dockerfile／docker-compose.yaml（[docs/operate.md](operate.md)） | 不採用作の掃除、ブラウザでの確認、Coolify への初回デプロイ |
+| バッチ | `fanm make`：企画 → 生成 → 検査 → 修正（最大2回）→ 採用/不採用 を一つのジョブとして回す。ジョブ状態と予算台帳を保存し、途中から再開できる。DeepSeek 接続と、APIキーなしで試す偽のAI（`--fake`）。検査は静的検査・書き写しの検査・型検査・隔離実行・撮影・画面の数値判定。企画には型のほかに縛り（`plan/variations.ts`）を引いて渡し、実例はデータを抜いて渡す。`fanm run`：残予算と実費から頻度を決めて回し続け、頃合いを見て公開し、直らない問題だけ知らせる。`fanm status` と Dockerfile／docker-compose.yaml（[docs/operate.md](operate.md)） | 不採用作の掃除、ブラウザでの確認、Coolify への初回デプロイ |
 | ギャラリー | サムネイルの一覧、作品ごとのURL（`#<id>`）、ランダム再生、iframe の中での動的読込。開発時は未ビルドの手元の作品も再生できる | 連続再生、お気に入り |
 | つなぎ | `fanm publish` が `<VAR>/site/` に公開物を組み立て、Cloudflare Workers（`fanm.oyabanare.com`）へ送る。作品とエンジンは増えた分だけビルドし、送るのも増えた分だけ。常駐はこれを既定6時間おきに、送っていない作品があるときだけ呼ぶ | 公開頻度の実測に基づく調整 |
 

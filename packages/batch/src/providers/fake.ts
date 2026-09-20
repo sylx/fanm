@@ -14,6 +14,7 @@ const PLAN = {
     subject: "星空",
     motion: "円が少しずつ増える",
     composition: "画面全体に散らばる",
+    structure: "最初から最後まで、円が一つずつ増えるだけ。段階は一つ。",
     sound: "なし",
     msxFeatures: ["blitter"],
     interactive: false,

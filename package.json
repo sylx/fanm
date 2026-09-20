@@ -19,6 +19,7 @@
     "start:fake": "npm run gallery:build && tsx packages/batch/src/cli.ts run --fake",
     "makenow": "npm run gallery:build && tsx packages/batch/src/cli.ts makenow",
     "status": "tsx packages/batch/src/cli.ts status",
+    "overlap": "tsx packages/batch/src/cli.ts overlap",
     "publish": "npm run gallery:build && tsx packages/batch/src/cli.ts publish",
     "publish:local": "npm run gallery:build && tsx packages/batch/src/cli.ts publish --local",
     "check:templates": "tsx packages/batch/src/cli.ts check templates/ambient templates/game templates/poem templates/adventure templates/rpg",

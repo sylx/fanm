@@ -9,19 +9,35 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { createRandom, type Scenario, type ScenarioInput, type WorkDescription } from "@fanm/work";
 import { runIsolated } from "./isolated.js";
+import { DEFAULT_MAX_OVERLAP, overlap, type Overlap } from "./overlap.js";
 import { slowAdvice } from "./pace.js";
 import type { RunnerCapture } from "./runner.js";
 import { staticCheck } from "./static.js";
 import { typecheck } from "./typecheck.js";
 
+/** 見比べる相手。実例（テンプレート）と、同じ型の過去作。 */
+export interface Reference {
+    readonly label: string;
+    readonly source: string;
+}
+
+export interface CheckOptions {
+    /** 書き写していないかを見比べる相手。空なら見比べない。 */
+    readonly references?: readonly Reference[];
+    /** そのままの語の並びの一致率の上限。別の型同士は 0.05〜0.19 に収まる。 */
+    readonly maxOverlap?: number;
+}
+
 export interface CheckReport {
     readonly ok: boolean;
-    readonly stage: "static" | "typecheck" | "build" | "timeout" | "crash" | "runtime" | "screen" | "passed";
+    readonly stage: "static" | "overlap" | "typecheck" | "build" | "timeout" | "crash" | "runtime" | "screen" | "passed";
     /** AIへそのまま返せる、失敗の理由。 */
     readonly problems: readonly string[];
     /** 画面の様子の文章。成否にかかわらず付ける。 */
     readonly observations: string;
     readonly captures: readonly RunnerCapture[];
+    /** 見比べた相手との重なり。採否にかかわらず残す。多様性を数で追うため。 */
+    readonly overlaps?: readonly (Overlap & { label: string })[];
     /** サムネイルに使う撮影。 */
     readonly thumbnail?: string;
     readonly scenario: Scenario;
@@ -97,6 +113,16 @@ function tidy(error: string, dir: string): string {
         .join("\n");
 }
 
+/** そのまま持ってきていないかを見る。似ているだけなら通し、写しだけを落とす。 */
+function judgeOverlap(overlaps: readonly (Overlap & { label: string })[], max: number): string[] {
+    return overlaps
+        .filter(o => o.text > max)
+        .map(o => `${o.label} のコードをそのまま使っている（語の並びの ${Math.round(o.text * 100)}% が一致）。`
+            + "これは実装ではなく書き写しなので採用できない。企画の段取り（structure）と縛り（twist）から組み直す。"
+            + "状態の分け方、関数の分け方、画面の並び、データの持ち方を自分で決めること。"
+            + "実例と同じ関数が同じ順に並んでいるなら、まだ写している。");
+}
+
 /** 画面の数値から、明らかな不具合だけを拾う。 */
 function judgeScreen(captures: readonly RunnerCapture[]): string[] {
     const problems: string[] = [];
@@ -116,15 +142,20 @@ function judgeScreen(captures: readonly RunnerCapture[]): string[] {
     return problems;
 }
 
-export async function checkWork(dir: string, seed: number): Promise<CheckReport> {
+export async function checkWork(dir: string, seed: number, options: CheckOptions = {}): Promise<CheckReport> {
     const workPath = join(dir, "work.ts");
     const meta = JSON.parse(readFileSync(join(dir, "meta.json"), "utf8")) as WorkDescription;
     const scenario = scenarioFor(meta, seed);
+    const source = readFileSync(workPath, "utf8");
+    const overlaps = (options.references ?? []).map(r => ({ label: r.label, ...overlap(source, r.source) }));
     const fail = (stage: CheckReport["stage"], problems: string[], captures: readonly RunnerCapture[] = [], observations = ""): CheckReport =>
-        ({ ok: false, stage, problems, observations, captures, scenario });
+        ({ ok: false, stage, problems, observations, captures, overlaps, scenario });
 
-    const lint = staticCheck(readFileSync(workPath, "utf8"));
+    const lint = staticCheck(source);
     if (lint.length) return fail("static", lint);
+
+    const copied = judgeOverlap(overlaps, options.maxOverlap ?? DEFAULT_MAX_OVERLAP);
+    if (copied.length) return fail("overlap", copied);
 
     const types = await typecheck(workPath);
     if (types.length) return fail("typecheck", types);
@@ -148,7 +179,7 @@ export async function checkWork(dir: string, seed: number): Promise<CheckReport>
     const candidates = result.captures.slice(Math.floor(result.captures.length / 2));
     const thumbnail = candidates.reduce((best, c) => c.stats.colors > best.stats.colors ? c : best, candidates[0]);
     return {
-        ok: true, stage: "passed", problems: [], observations,
+        ok: true, stage: "passed", problems: [], observations, overlaps,
         captures: result.captures, thumbnail: join(out, thumbnail.file), scenario
     };
 }
