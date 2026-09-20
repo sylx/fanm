@@ -83,10 +83,10 @@ for (const [type, down] of [["keydown", true], ["keyup", false]] as const) {
 // 窓から出たまま押されていたキーは、押しっぱなしとして残ってしまう。
 window.addEventListener("blur", releaseForwarded);
 
-// createdAt は ISO 8601。閲覧者の暦で日付だけ出す（時刻までは要らない）。
+// createdAt は ISO 8601。閲覧者の暦で時刻まで表示する。UTC で保存されているので、タイムゾーンの差を吸収してくれる。
 function date(iso: string): string {
     const at = new Date(iso);
-    return Number.isNaN(at.getTime()) ? "" : at.toLocaleDateString();
+    return Number.isNaN(at.getTime()) ? "" : at.toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" })
 }
 
 function card(entry: CatalogEntry): HTMLLIElement {
