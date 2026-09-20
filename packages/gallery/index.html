@@ -43,6 +43,12 @@
     .card span { color: var(--dim); font-size: 13px; }
     .card time { color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums;
                  padding-top: 4px; }
+    /* 継ぎ足しの押しどころ。並べ終えたら隠れるので、余白ごと畳まれるよう
+       升目の外に独立して置く。 */
+    #more { display: block; margin: 24px auto 0; padding: 8px 24px; cursor: pointer;
+            background: none; border: 1px solid var(--line); border-radius: 6px;
+            color: var(--dim); font: inherit; }
+    #more:hover, #more:focus-visible { color: var(--fg); border-color: var(--fg); }
     #empty { color: var(--dim); }
   </style>
 </head>
@@ -65,6 +71,7 @@
     </section>
     <p id="empty" hidden>まだ作品がありません。</p>
     <ul id="catalog"></ul>
+    <button id="more" type="button" hidden></button>
   </main>
   <script type="module" src="./src/catalog.ts"></script>
 </body>

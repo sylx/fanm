@@ -8,6 +8,10 @@
 // 選んだ時点で iframe へ焦点を移し、それでも目録の側にキーが届いたときは
 // （閉じるボタンを押したあとなど）、そのキーを iframe へ送る。同じ押鍵が
 // 両方の文書に届くことはないので、二重には入らない。
+//
+// 作品は増えていくばかりなので、一覧は最初の何枚かだけ並べ、あとは
+// 「もっと見る」で継ぎ足す。名前で直に呼ばれた作品がまだ並んでいなければ、
+// そこまで並べてから再生する。
 
 import type { CatalogEntry } from "./catalog-entry.js";
 
@@ -16,6 +20,7 @@ const random = document.querySelector("#random") as HTMLAnchorElement;
 const stage = document.querySelector("#stage") as HTMLElement;
 const empty = document.querySelector("#empty") as HTMLElement;
 const close = document.querySelector("#close") as HTMLAnchorElement;
+const more = document.querySelector("#more") as HTMLButtonElement;
 
 let frame: HTMLIFrameElement | null = null;
 let playing: CatalogEntry | null = null;
@@ -110,6 +115,29 @@ function card(entry: CatalogEntry): HTMLLIElement {
     return item;
 }
 
+/** 一度に並べる枚数。最初はこれだけ出して、あとは押されるたびに継ぎ足す。 */
+const PAGE = 8;
+
+/** すでに並べた枚数。works の先頭からこの数だけが一覧に出ている。 */
+let shown = 0;
+
+/** 先頭から upto 枚目までを並べる。すでに並んでいる分は作り直さない。 */
+function reveal(upto: number = shown + PAGE): void {
+    for (const work of works.slice(shown, Math.min(upto, works.length))) list.append(card(work));
+    shown = Math.max(shown, Math.min(upto, works.length));
+    const rest = works.length - shown;
+    more.textContent = `もっと見る（残り ${rest} 件）`;
+    more.hidden = rest <= 0;
+}
+
+/** 名前で作品へ飛ぶ。まだ並んでいなければ、そこまで並べてから再生する。 */
+function jump(id: string): void {
+    const at = works.findIndex(work => work.id === id);
+    if (at < 0 || works[at].id === playing?.id) return;
+    reveal(at + 1);
+    play(works[at]);
+}
+
 async function load(): Promise<CatalogEntry[]> {
     // 開発サーバーでは、公開物を組み立てる前でも手元の作品庫をそのまま見せる。
     if (import.meta.env.DEV) return (await import("./dev-catalog.js")).load();
@@ -122,11 +150,14 @@ const works = await load();
 if (!works.length) {
     empty.hidden = false;
 } else {
-    for (const work of works) list.append(card(work));
+    reveal();
+    more.addEventListener("click", () => reveal());
     random.hidden = false;
     random.addEventListener("click", event => {
         event.preventDefault();
-        play(works[Math.floor(Math.random() * works.length)]);
+        const at = Math.floor(Math.random() * works.length);
+        reveal(at + 1);
+        play(works[at]);
     });
 
     close.addEventListener("click", event => {
@@ -141,10 +172,8 @@ if (!works.length) {
     window.addEventListener("hashchange", () => {
         const id = location.hash.slice(1);
         if (!id) return stop();
-        const wanted = works.find(w => w.id === id);
-        if (wanted && wanted.id !== playing?.id) play(wanted);
+        jump(id);
     });
 
-    const wanted = works.find(w => w.id === location.hash.slice(1));
-    if (wanted) play(wanted);
+    jump(location.hash.slice(1));
 }
