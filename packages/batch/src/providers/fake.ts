@@ -1,10 +1,11 @@
 // APIキーなしでバッチを一周させるための偽物。
 //
-// 企画には決まった JSON を返す。生成では、一回目はわざと型エラーのある
-// コードを返し、修正を頼まれたら templates/minimal をそのまま返す。
-// 修正の経路まで通して試せるように。
+// 企画には決まった JSON を返す。生成では、一回目はわざと型エラーのあるコードを
+// 返し、修正を頼まれたら、頼みに入っていた実例（今回の型のテンプレート）を
+// そのまま返す。修正の経路まで通して試せるように。
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import type { Completion, CompletionRequest, OnDelta, Provider } from "./provider.js";
 
 const PLAN = {
@@ -18,6 +19,25 @@ const PLAN = {
     interactive: false,
     durationFrames: 1800
 };
+
+const TEMPLATES = "templates";
+
+/** 頼みの文に入っていた実例が、どのテンプレートかを当てる。 */
+function templateInPrompt(prompt: string): { work: string; meta: string } {
+    for (const id of readdirSync(TEMPLATES)) {
+        const work = join(TEMPLATES, id, "work.ts");
+        if (!existsSync(work)) continue;
+        const source = readFileSync(work, "utf8");
+        if (prompt.includes(source.slice(0, 200))) {
+            return { work: source, meta: readFileSync(join(TEMPLATES, id, "meta.json"), "utf8") };
+        }
+    }
+    const fallback = join(TEMPLATES, "ambient");
+    return {
+        work: readFileSync(join(fallback, "work.ts"), "utf8"),
+        meta: readFileSync(join(fallback, "meta.json"), "utf8")
+    };
+}
 
 export class FakeProvider implements Provider {
     readonly name = "fake";
@@ -37,8 +57,9 @@ export class FakeProvider implements Provider {
         const usage = { inputTokens: 1000, cachedInputTokens: 0, outputTokens: 500, reasoningTokens: 0, usd: 0.001 };
         if (request.json) return { text: JSON.stringify(PLAN), usage, truncated: false };
 
-        const meta = readFileSync("templates/minimal/meta.json", "utf8");
-        let work = readFileSync("templates/minimal/work.ts", "utf8");
+        const prompt = request.messages.map(m => m.content).join("\n");
+        const { meta, work: template } = templateInPrompt(prompt);
+        let work = template;
         if (this.generations++ === 0) work = work.replace("let frame = 0;", "let frame: string = 0;");
         return {
             text: `できました。\n\n\`\`\`ts work.ts\n${work}\`\`\`\n\n\`\`\`json meta.json\n${meta}\`\`\`\n`,

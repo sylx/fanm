@@ -13,7 +13,8 @@ const FORBIDDEN: readonly [RegExp, string][] = [
     [/\bimport\s*\(/, "動的 import は使わない"],
     [/\brequire\s*\(/, "require は使わない"],
     [/\b(process|globalThis|window|document|self|navigator|localStorage|sessionStorage|indexedDB)\b/, "ホストの環境には触れない"],
-    [/\b(ctx|context)\.(image|text|console|ime|keyboard|crt)\b|\bbios\.(image|text|console|ime)\b/, "画像・フォント・日本語入力・CRT の機能は使わない"]
+    [/\b(ctx|context)\.(image|console|ime|keyboard|crt)\b|\bbios\.(image|console|ime)\b/, "画像・文字盤・日本語入力・CRT の機能は使わない"],
+    [/\btext\.(load|ready)\s*\(/, "text.load / text.ready は使わない。ドット面はプレイヤーが先に読んでいる"]
 ];
 
 /** コメントと文字列を空白にして、そこに書かれた単語で誤検出しないようにする。 */

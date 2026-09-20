@@ -25,7 +25,7 @@ fanM/
 │  │     ├─ archive/       作品庫（公開分と非公開の記録を分ける）
 │  │     └─ publish/       公開先への接続
 │  └─ gallery/             @fanm/gallery ギャラリーサイト（目録 + iframe プレイヤー、Cloudflare Workers）
-├─ templates/minimal/      最小の作品。AIへの実例と結線確認を兼ねる
+├─ templates/<型>/         作品の型ごとの手引き（form.md）と実例（work.ts）。AIへ渡すものであり、結線確認も兼ねる
 ├─ prompts/                AIへ渡す制作ルールと資料
 ├─ config/                 設定の例。実設定 fanm.json は git に入れない
 ├─ docs/
@@ -41,6 +41,31 @@ fanM/
 - fantasy-msx はパッケージとしてビルドされておらず、TypeScript のソースを直接読む形で使う。fanM 側では `fantasy-msx` → `engine/fantasy-msx/src/index.ts`、`fantasy-msx/*` → `engine/fantasy-msx/*` と別名を付けている（`tsconfig.base.json` の `paths`、`packages/gallery/vite.config.ts` の `alias`）。バッチは tsx で動かし、tsx が同じ `paths` を解決する。
 - fantasy-msx 自身が持つ WebMSX の submodule は取得しない。チップのコードは `src/core/vendor/` に取り込み済みで、WebMSX は取り込み直すときにしか使わない。
 - ヘッドレス撮影には fantasy-msx の `tools/capture.ts` と `tools/png.ts` を借りている。`src/` ではないので、エンジン側で動かされたら追従する。
+
+## 作品の型（`templates/`）
+
+企画のたびに、作る型を一つ決めてから AI に渡す。型を決めずに頼むと、何を作っても環境デモに寄るため。
+
+| 型 | ディレクトリ | 中身 |
+| --- | --- | --- |
+| 環境デモ | `templates/ambient/` | 操作のない映像。パレットとスプライトで動かす |
+| ゲーム | `templates/game/` | 遊べるもの。無操作のときは機械が自分で遊ぶ |
+| 詩 | `templates/poem/` | 日本語の詩が一字ずつ現れる |
+| アドベンチャー | `templates/adventure/` | 上が一枚絵、下が文章の枠。選択肢で進む |
+| RPG | `templates/rpg/` | 地図を歩き、戦いの画面でコマンドを選ぶ |
+
+- 型ごとに `form.md`（AIへの手引き）、`work.ts`、`meta.json` を置く。型を増やすのは、ディレクトリを足して `plan/forms.ts` に一行足すだけ。
+- 選ぶのは `plan/forms.ts` の `pickForm`。直近15作の型を数え、少ないものから当てる。同数なら乱択。AIには選ばせない。
+- 選んだ型の `form.md` は企画（`plan.md` の `{{form}}`）と生成（`generate.md` の `{{form}}`）の両方に入り、`work.ts` が生成の実例（`{{template}}`）になる。
+- ジョブには型が残る（`job.form`）ので、途中で落ちて再開しても同じ型で続く。
+
+## 日本語の文字
+
+内蔵フォント（`gfx.text`）は ASCII しか持たない。日本語は `ctx.text`（ホストのフォント）で組む。
+
+- 面はエンジン同梱の `JF-Dot-k12x10.woff2`。ギャラリーでは vite の `publicDir` でそのまま配り、プレイヤーが作品を動かす前に読んで登録する。
+- 書式は `@fanm/work` の `DOT_STYLE`（size 10 / stretch 1 / snap）。この面が決めている値で、選べるものではない。
+- ヘッドレスの検査にはブラウザが無い。エンジンの `text.rasteriser` を差し替え口として、同じ woff2 から取り出したドット表（`check/dot-font.ts`、`packages/batch/src/generate/dot-font.py` が生成）を並べる（`check/typeset.ts`）。検査で見える字とギャラリーで見える字が同じになる。
 
 ## 作品形式
 
@@ -76,7 +101,7 @@ var/site/                        これがそのまま公開する中身
 git submodule update --init         # engine/fantasy-msx（WebMSX は不要）
 npm install
 npm run typecheck                   # fanM とエンジンのソースを合わせて型検査
-npm run check:template              # 最小テンプレートをヘッドレスで動かし var/check/minimal に撮影
+npm run check:templates             # 全テンプレートをヘッドレスで動かし var/check/<型>/ に撮影
 npm run gallery:dev                 # play.html?work=<id> で手元の作品やテンプレートを再生
 npm run make                        # AIで一作品作る（走っている間に叩くと、その様子が見える）
 npm run publish                     # 採用作から var/site/ を組み立てる

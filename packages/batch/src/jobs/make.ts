@@ -7,11 +7,13 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { createRandom } from "@fanm/work";
 import type { Archive } from "../archive/archive.js";
 import { BudgetExceeded, type Ledger } from "../budget/ledger.js";
 import { checkWork, type CheckReport } from "../check/check.js";
 import type { Config } from "../config.js";
 import { FormatError, generateRequest, parseFiles, type PastAttempt } from "../generate/generator.js";
+import { formOf, pickForm } from "../plan/forms.js";
 import { parsePlan, planRequest } from "../plan/planner.js";
 import { call } from "../providers/call.js";
 import type { OnDelta, Provider } from "../providers/provider.js";
@@ -60,18 +62,21 @@ export async function make(ctx: MakeContext, job: Job): Promise<Job> {
 
 async function plan(ctx: MakeContext, job: Job): Promise<void> {
     const past = ctx.archive.plans();
+    // 型はAIに選ばせない。過去作に少ない型を当てる。同じジョブなら毎回同じ型。
+    const form = job.form ? formOf(job.form) : pickForm(past, createRandom(job.seed));
+    job.form = form.id;
     const result = await call(ctx.provider, ctx.ledger, job.id, "plan",
-        planRequest(past, ctx.config.generation.planMaxTokens), deltas(ctx.log));
+        planRequest(past, form, ctx.config.generation.planMaxTokens), deltas(ctx.log));
     job.calls.push(result.log);
     try {
-        job.plan = parsePlan(result.text);
+        job.plan = parsePlan(result.text, form);
     } catch (e) {
         // 企画の JSON が壊れているなら、次のループでもう一度企画させる。3回までで諦める。
         ctx.log.line(`${job.id}: 企画を読めない（${(e as Error).message}）`);
         if (job.calls.filter(c => c.purpose === "plan").length >= 3) reject(ctx, job, "企画を3回読めなかった");
         return;
     }
-    ctx.log.line(`${job.id}: 企画「${job.plan.title}」 ${job.plan.pitch}`);
+    ctx.log.line(`${job.id}: 企画「${job.plan.title}」（${form.label}） ${job.plan.pitch}`);
     job.state = "generating";
 }
 

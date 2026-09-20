@@ -4,7 +4,8 @@
 //
 // AIに渡すのは、README のうち作品づくりに要る節と、公開APIの型宣言。
 // 型宣言はエンジンのソースから tsc で出すので、固定した版と食い違わない。
-// 画像・フォント・日本語入力など、作品で使わせない機能は含めない。
+// 画像・日本語入力など、作品で使わせない機能は含めない。ホストのフォント
+// （text）は、検査側にドットのラスタライザを差してあるので含める。
 
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -17,6 +18,7 @@ const SECTIONS = [
     "## How it works",
     "### Drawing takes time, and you can see it",
     "## Using the BIOS",
+    "## Text in a real typeface",
     "## Writing a game",
     "## Sound",
     "### Music",
@@ -35,6 +37,7 @@ const DECLARATIONS = [
     "bios/raster.d.ts",
     "bios/screen.d.ts",
     "bios/sprites.d.ts",
+    "bios/text.d.ts",
     "bios/sound.d.ts",
     "bios/mml.d.ts",
     "runtime/input.d.ts",

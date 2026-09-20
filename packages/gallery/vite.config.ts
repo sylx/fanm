@@ -33,6 +33,9 @@ function watchArchive(): Plugin {
 
 export default defineConfig({
     base: "./",
+    // 作品が日本語を出すためのドット面（JF Dot K12x10）。エンジンに同梱された
+    // ものをそのまま配る。写しを持たないので、エンジンを更新すれば追従する。
+    publicDir: root("engine/fantasy-msx/public"),
     plugins: [watchArchive()],
     resolve: {
         alias: [

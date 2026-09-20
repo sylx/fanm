@@ -27,6 +27,8 @@ export interface Job {
     updatedAt: string;
     state: JobState;
     readonly seed: number;
+    /** 作品の型。企画の前に決まり、やり直しても変わらない。 */
+    form?: string;
     plan?: Plan;
     attempts: Attempt[];
     calls: CallLog[];

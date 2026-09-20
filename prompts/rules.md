@@ -1,6 +1,8 @@
 # 制作ルール
 
-fanM は、fantasy-msx の上で動く MSX2 風の短いデモを作り続ける。作品は Web のギャラリーで、ブラウザ上の fantasy-msx によって再生される。
+fanM は、fantasy-msx の上で動く MSX2 風の短い作品を作り続ける。作品は Web のギャラリーで、ブラウザ上の fantasy-msx によって再生される。
+
+作品には型がある。環境デモ、操作できるゲーム、詩、アドベンチャー、RPG。どの型を作るかは毎回こちらが決めて渡す。型ごとの作法はそのときの手引きに書いてある。
 
 ## 作品の形
 
@@ -9,7 +11,7 @@ fanM は、fantasy-msx の上で動く MSX2 風の短いデモを作り続ける
 ```ts
 // work.ts
 import { type App } from "fantasy-msx";          // 値の import も可: { BUTTON, compile, psgVoice, ... }
-import type { WorkFactory } from "@fanm/work";
+import { DOT_STYLE, type WorkFactory } from "@fanm/work";   // DOT_STYLE は日本語を出すときだけ
 
 const create: WorkFactory = env => {
     // 状態はすべてここに置く。起動のたびに作り直される。
@@ -35,6 +37,8 @@ export default create;
 
 `durationFrames` は、無操作で見どころを一通り見せるのにかかるフレーム数（60 フレームで 1 秒）。1800〜3600 にする。
 
+`controls` に何か書いた作品は、検査でも実際に操作される。最初の10秒は無操作のまま動かし、そのあと十字とトリガをでたらめに押す。どちらでも壊れないこと。
+
 ## 守ること
 
 - import してよいのは `fantasy-msx` と `@fanm/work` だけ。
@@ -42,7 +46,13 @@ export default create;
 - 時刻はフレームで数える（`ctx.frame`、自前のカウンタ）。`Date`、`performance`、`setTimeout`、`setInterval`、`requestAnimationFrame` は使わない。
 - 乱数は `env.random()` だけを使う。`Math.random` は使わない。
 - 外部と通信しない。`fetch` などは使わない。`window`、`document`、`globalThis`、`process` などホストの環境に触れない。
-- `ctx.image`（画像読込）、`ctx.text`（ホストのフォント）、`ctx.console`、`ctx.ime`、`ctx.keyboard`、`ctx.crt` は使わない。文字は `gfx.text` / `gfx.now.text` の内蔵フォント（ASCII のみ）で描く。
+- `ctx.image`（画像読込）、`ctx.console`、`ctx.ime`、`ctx.keyboard`、`ctx.crt` は使わない。
+- 文字は二通り。**ASCII は `gfx.text` / `gfx.now.text`**（内蔵の 6x8 フォント。速い）。**日本語は `ctx.text`**。
+  - `text.style = DOT_STYLE`（`@fanm/work`）を一度渡してから、`text.drawNow(x, y, "…", { color: 15 })` で描く。
+  - `DOT_STYLE` の中身（font、size、stretch、snap、lineHeight）は変えない。この面には一つの大きさしかない。
+  - `text.load` / `text.ready` は呼ばない。面はギャラリーのプレイヤーが先に読んでいる。
+  - 日本語を `gfx.text` に渡してはいけない。`?` が並ぶだけになる。
+  - このドット面は 512 画素のモード（G5 / G6）では崩れる。日本語を出すなら G4 か G7。
 - 絵は描画命令、`gfx.drawImage` に渡す 1 画素 1 バイトの配列、スプライトで作る。音は MML（`compile` と `ctx.bgm`）か PSG / OPLL の直接操作で作る。
 
 ## よくある間違い
@@ -54,6 +64,12 @@ export default create;
 - **時刻は `ctx.frame`。** `env` にあるのは `seed` と `random` だけで、`env.frame` は無い。
 - **パレットは `screen.setColor(index, r, g, b)` か `screen.setPalette([[r,g,b], ...])`。** `setPaletteEntry` は Screen には無い。
 - **スプライトは `ctx.sprites`。** `sprites.setPatternFromBitmap(n, [...])`、`sprites.set(n, {...})`、`sprites.move(n, x, y)`、`sprites.setActiveCount(n)`。`gfx` にスプライトの命令は無い。
+
+## 操作できる作品
+
+- 入力は `ctx.input` だけ。`input.axis()`、`input.btn(BUTTON.A)`、`input.btnp(BUTTON.UP)`（押した瞬間）、`input.btnr(...)`（離した瞬間）。生のキー（`input.key`）と `ctx.keyboard` は使わない。
+- **誰も触らないうちから動いていること。** 機械が自分で遊ぶ、話が自分で進む、カーソルが自分で選ぶ。最初の入力が来たら人に渡し、しばらく触られなければまた自分で動き出す。
+- `meta.json` の `controls` に操作を一行で書く。ギャラリーの作品名の横に出る。
 
 ## よい作品にするために
 

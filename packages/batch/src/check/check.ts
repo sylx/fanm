@@ -7,7 +7,7 @@
 
 import { mkdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import type { Scenario, WorkDescription } from "@fanm/work";
+import { createRandom, type Scenario, type ScenarioInput, type WorkDescription } from "@fanm/work";
 import { runIsolated } from "./isolated.js";
 import { slowAdvice } from "./pace.js";
 import type { RunnerCapture } from "./runner.js";
@@ -30,14 +30,46 @@ export interface CheckReport {
 export const MIN_FRAMES = 1800;
 export const MAX_FRAMES = 3600;
 
+/** 検査で押すボタン。十字と2つのトリガだけ。キーボードは作品に使わせない。 */
+const BUTTONS = ["UP", "DOWN", "LEFT", "RIGHT", "A", "B"] as const;
+
+/**
+ * 操作できる作品を、実際に操作してみる入力。
+ *
+ * 誰かが遊ぶところを真似るのではなく、入力を受ける道を一度は通すためのもの。
+ * 操作で落ちる作品、押しっぱなしで壊れる作品を、公開の前に見つける。
+ *
+ * 最初の `QUIET` フレームは何も押さない。ルールが「操作を待たずに見どころまで
+ * 進む」ことを求めているので、まずそこが動くのを見る。以後は押して離すを
+ * 繰り返す。seed から作った乱数なので、同じ作品には毎回同じ操作が届く。
+ */
+function inputsFor(frames: number, seed: number): ScenarioInput[] {
+    const QUIET = 600;                       // 10秒は無操作のまま見る
+    const random = createRandom(seed ^ 0x5eed);
+    const inputs: ScenarioInput[] = [];
+    for (let frame = QUIET; frame < frames - 60; frame += 24 + Math.floor(random() * 36)) {
+        const code = BUTTONS[Math.floor(random() * BUTTONS.length)];
+        const held = 6 + Math.floor(random() * 30);
+        inputs.push({ frame, kind: "button", code, down: true });
+        inputs.push({ frame: Math.min(frames - 1, frame + held), kind: "button", code, down: false });
+    }
+    return inputs;
+}
+
 export function scenarioFor(meta: WorkDescription, seed: number): Scenario {
     const frames = Math.min(MAX_FRAMES, Math.max(MIN_FRAMES, Math.round(meta.durationFrames || MIN_FRAMES)));
     const captures = [30, Math.floor(frames / 4), Math.floor(frames / 2), Math.floor(frames * 3 / 4), frames - 1];
-    return { seed, frames, captures, inputs: [] };
+    // 操作方法が書いてある作品は、操作できるはずのもの。押してみる。
+    const inputs = meta.controls?.trim() ? inputsFor(frames, seed) : [];
+    return { seed, frames, captures, inputs };
 }
 
-function describe(captures: readonly RunnerCapture[]): string {
+function describe(captures: readonly RunnerCapture[], scenario: Scenario): string {
     if (!captures.length) return "撮影できた画面はない。";
+    const played = scenario.inputs.length
+        ? `\n（${(scenario.inputs[0].frame / 60).toFixed(0)}秒目から、十字とトリガを`
+            + `${scenario.inputs.length / 2}回、でたらめに押しながら動かした）`
+        : "";
     const pct = (x: number) => `${Math.round(x * 100)}%`;
     return captures.map(c => {
         const s = c.stats;
@@ -49,7 +81,7 @@ function describe(captures: readonly RunnerCapture[]): string {
             c.musicPlaying ? "BGMあり" : "BGMなし"
         ];
         return `- ${parts.filter(Boolean).join("、")}`;
-    }).join("\n");
+    }).join("\n") + played;
 }
 
 const ROOT = resolve(import.meta.dirname, "../../../..");
@@ -103,7 +135,7 @@ export async function checkWork(dir: string, seed: number): Promise<CheckReport>
     if (run.stage !== "run") return fail(run.stage, [run.error]);
 
     const { result } = run;
-    const observations = describe(result.captures);
+    const observations = describe(result.captures, scenario);
     if (result.slow) {
         return fail("timeout", [slowAdvice(scenario.frames, result.errorFrame ?? 0, result.msPerFrame)], result.captures, observations);
     }

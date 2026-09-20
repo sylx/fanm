@@ -1,10 +1,14 @@
 // 作品をヘッドレスのfantasy-msxで動かし、決めたフレームで撮影する。
 // 生成コードを直接呼ぶので、バッチ本体からは使わず runner.ts（子プロセス）から使う。
+//
+// ctx.text はふだんブラウザに字を組ませる。node には組む相手がいないので、
+// 同じドット面から取り出した字を並べるラスタライザを差す（typeset.ts）。
 
 import { BUTTON, boot } from "fantasy-msx";
 import { readFrame, type Image } from "fantasy-msx/tools/capture.js";
 import { createEnv, type Scenario, type WorkFactory } from "@fanm/work";
 import { PACE } from "./pace.js";
+import { rasteriseWithDots } from "./typeset.js";
 
 export interface Capture {
     readonly frame: number;
@@ -22,6 +26,7 @@ export type RunResult =
 
 export function runHeadless(factory: WorkFactory, scenario: Scenario, onProgress?: (frame: number) => void): RunResult {
     const runtime = boot();
+    runtime.bios.text.rasteriser = rasteriseWithDots;
     const captures: Capture[] = [];
     const wanted = new Set(scenario.captures);
     const started = performance.now();

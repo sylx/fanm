@@ -9,7 +9,7 @@
 // エクスポートせず、env を受け取って App を返す関数にする。時刻は
 // ctx.frame などのフレーム基準、乱数は env.random だけを使う。
 
-import type { App, BUTTON } from "fantasy-msx";
+import type { App, BUTTON, TextStyle } from "fantasy-msx";
 
 export interface WorkEnv {
     /** この再生の乱数seed。検証時と公開時で同じ値を渡せば同じ絵になる。 */
@@ -29,6 +29,35 @@ export interface WorkDescription {
     /** 無操作で見どころまで進むのにかかるフレーム数（60fps）。 */
     readonly durationFrames: number;
 }
+
+/**
+ * 日本語を出すときの `ctx.text` の書式。
+ *
+ * 内蔵フォント（`gfx.text`）は ASCII しか持たない。日本語は `ctx.text` で
+ * 組む。エンジンに同梱された JF Dot K12x10 というドット面で、ギャラリーでは
+ * プレイヤーが先に読み込み、検査では同じ面から取り出したドットを並べる。
+ * だから、どちらでも同じ字が出る。
+ *
+ *     text.style = DOT_STYLE;
+ *     text.drawNow(16, 160, "ここはドコダロウ", { color: 15 });
+ *
+ * ここにある値は、この面が決めているもので、選べるものではない。大きさを
+ * 変えるとドットが崩れる。傾けたり太らせたりもできない。
+ */
+export const DOT_STYLE: TextStyle = {
+    font: "'JF Dot K12x10', monospace",
+    /** 12 ではない。全角の送りが 1.2em なので、12画素になる大きさが 10。 */
+    size: 10,
+    /** この面には一つの格子しかない。512画素のモード（G5/G6）では使わない。 */
+    stretch: 1,
+    /** ドットを画素にそのまま載せる。外すと一行が二行ににじむ。 */
+    snap: true,
+    /** 行送り。字の高さ 10 に、行間 2。 */
+    lineHeight: 12
+};
+
+/** DOT_STYLE で組んだときの1字の大きさ。全角はこの幅の2倍。 */
+export const DOT_CELL = { width: 6, height: 12 } as const;
 
 /** 検証時に使った入力と撮影タイミング。公開後も再現できるよう保存する。 */
 export interface Scenario {

@@ -11,7 +11,8 @@
 import type { WorkDescription } from "@fanm/work";
 import type { Plan } from "../plan/planner.js";
 import type { CompletionRequest, Message } from "../providers/provider.js";
-import { fill, prompt, system, template } from "../prompts.js";
+import { formOf } from "../plan/forms.js";
+import { fill, formBrief, prompt, system, template } from "../prompts.js";
 
 export interface PastAttempt {
     readonly response: string;
@@ -27,7 +28,14 @@ export function generateRequest(
 ): CompletionRequest {
     const messages: Message[] = [
         system(),
-        { role: "user", content: fill(prompt("generate.md"), { plan: JSON.stringify(plan, null, 2), template: template() }) }
+        {
+            role: "user",
+            content: fill(prompt("generate.md"), {
+                form: formBrief(formOf(plan.form).id),
+                plan: JSON.stringify(plan, null, 2),
+                template: template(formOf(plan.form).id)
+            })
+        }
     ];
     for (const attempt of past) {
         messages.push({ role: "assistant", content: attempt.response });

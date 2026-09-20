@@ -24,6 +24,12 @@ export function system(): Message {
     return { role: "system", content: `${prompt("rules.md")}\n\n${prompt("api.md")}` };
 }
 
-export function template(): string {
-    return readFileSync(join(ROOT, "templates/minimal/work.ts"), "utf8");
+/** 型の手引き。templates/<form>/form.md。 */
+export function formBrief(form: string): string {
+    return readFileSync(join(ROOT, "templates", form, "form.md"), "utf8").trim();
+}
+
+/** 型の実例。templates/<form>/work.ts。 */
+export function template(form: string): string {
+    return readFileSync(join(ROOT, "templates", form, "work.ts"), "utf8");
 }

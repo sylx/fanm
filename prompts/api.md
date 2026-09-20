@@ -118,6 +118,94 @@ the way in, so positions worked out with `sin` and `cos` can be passed straight
 through - a fraction reaching the packing would otherwise pick its shift from
 the fractional part and corrupt the pixel sharing the byte.
 
+### Text in a real typeface
+
+`gfx.text` draws the machine's own 6x8 font - five pixels wide, seven rows, the
+shapes an MSX had in ROM. `text` is the other kind: a real typeface, laid out
+and rasterised by the browser on a canvas the machine never sees, then carried
+into VRAM one byte per pixel like any other picture.
+
+```ts
+const { text, gfx } = createBios();
+
+text.style = { font: "'Georgia', serif", size: 20 };   // chosen once
+
+text.drawNow(12, 12, "CHAPTER ONE", { color: 15 });    // straight into VRAM
+text.draw(12, 40, "and what\nbecame of it", {          // queued, like any drawing
+    color: 10, align: "center", lineHeight: 22
+});
+
+const box = text.measure("CHAPTER ONE");               // width, height, baseline, lines
+```
+
+A face the page does not already have is fetched first, and one still loading
+rasterises as the fallback - silently, and at the fallback's metrics - so an
+`await` in `init` is worth it:
+
+```ts
+await text.load("Press Start 2P", "fonts/press-start.woff2");
+text.style = { font: "'Press Start 2P', monospace", size: 8 };
+await text.ready();                                    // faces named in CSS, too
+```
+
+What crosses the boundary is **coverage**: how much of each pixel the glyphs
+cover, 0 to 255. The machine has no such quantity - a pixel is an index into
+sixteen registers and nothing in between - so the coverage has to be spent on
+indices that already exist, and `shades` is where you say which:
+
+```ts
+screen.setColor(8, 3, 3, 3);                           // a grey between the two
+
+text.drawNow(12, 12, "CHAPTER ONE", { shades: [8, 15] });   // one soft step
+text.drawNow(12, 40, "and what became of it", { color: 15 });  // a hard edge
+```
+
+The ramp runs palest to fullest, and the coverage is divided into as many bands
+as it is long plus one: the bottom band is the background and the rest take the
+ramp in order. A ramp of one is exactly a threshold - which is what `color` is -
+so the antialiased path and the hard-edged one are the same arithmetic, and
+`threshold` (128 by default) slides a ramp of any length towards the ink or
+away from it. Lower it to fatten every stroke; raise it to thin them.
+
+**The palette is an input, as it is for pictures.** Nothing here picks a
+colour, searches for a near one, or repaints a register: every entry of the
+ramp is one you set, and one the type has taken off whatever else is on screen.
+Three shades is usually the most a sixteen-colour mode can afford, and small
+text should stay at one - at ten pixels an em there is no flank to resolve,
+only a blur where the stem was. `background` is the index behind the glyphs,
+and leaving it out makes the box transparent so only the glyphs land.
+
+The 512-wide modes are handled for you. A SCREEN 6 or 7 pixel is half as wide
+as it is tall, so a line set the way SCREEN 5 sets it would come out condensed
+to half its width; `text` draws the em twice as wide instead, and the same
+style gives type of the same shape with twice the detail across it. `stretch`
+overrides that - 1 to work in the mode's own pixels, anything else to condense
+or extend deliberately.
+
+**`snap` is for a face that is already a bitmap.** Such a face is only crisp
+where its own grid lands on the machine's, and at the size it was drawn for two
+things stop that. The face may hang its rows off the baseline - JF Dot K12x10
+puts its dots 0.41 of a dot low, so at ten pixels an em every row of them
+straddles two of ours. And the browser grid-fits: that face's `gasp` asks for
+it above eight pixels, so the rasteriser rounds the straddle onto the pixels,
+outwards, and one row of dots arrives as two. That is a bitmap face rendered
+bold with its dense characters filled in solid, and no threshold downstream can
+undo it - by then both rows are honestly covered. So `snap: true` cuts the face
+at four times the size, where a rounding of that kind moves an edge a quarter
+of one of our pixels, and folds it back four rows to one on the seam that lands
+the face's grid on ours. Only a bitmap face wants it; an outline face is grey
+by design.
+
+Rendering is the expensive half, so the last hundred or so results are kept:
+a caption redrawn every frame costs one layout and then nothing. `text.forget()`
+drops them, which is what a late-arriving font needs (`load` and `ready` do it
+for you).
+
+In the browser the layout is the browser's own, so any font the page can see
+works. Outside one there is nothing to ask, and `text.rasteriser` is the seam:
+give it a function from a string to coverage and everything above it works
+unchanged.
+
 ### Writing a game
 
 ```ts
@@ -659,6 +747,209 @@ export declare class Sprites {
     /** True when more than eight sprites landed on one line and one was dropped. */
     overflowed(): boolean;
 }
+```
+
+### bios/text
+
+```ts
+import type { Graphics } from "./gfx.js";
+import type { Screen } from "./screen.js";
+/** Where a short line sits inside a box the widest one decided. */
+export type TextAlign = "left" | "center" | "right";
+export interface TextStyle {
+    /** A CSS family list - `"serif"`, `"'Press Start 2P', monospace"`. Default `"sans-serif"`. */
+    font?: string;
+    /** Em size in pixels of the machine, not of the page. Default 16. */
+    size?: number;
+    /** CSS weight: a number, or `"bold"`. Default normal. */
+    weight?: number | string;
+    italic?: boolean;
+    /** Baseline to baseline, in pixels. Defaults to what the face asks for. */
+    lineHeight?: number;
+    /** Added between characters, in pixels. Negative tightens. Default 0. */
+    letterSpacing?: number;
+    /** Default `"left"`. */
+    align?: TextAlign;
+    /** The index the glyphs are drawn in. Default 15. A ramp of one, in the terms below. */
+    color?: number;
+    /**
+     * The indices partly-covered pixels are drawn in, palest first and fullest
+     * last, in place of `color`. This is the whole of the antialiasing here:
+     * coverage is divided by the length of the ramp, and each pixel takes the
+     * entry its share lands on - nothing is blended, searched for, or written
+     * into a palette register.
+     *
+     * `[1]` is the plain hard edge. `[8, 15]` gives a stroke one soft step,
+     * `[8, 7, 15]` two. Order matters and the machine cannot check it: a ramp
+     * that does not run from nearest-the-background to nearest-the-ink comes
+     * out looking outlined rather than smoothed - which is occasionally what
+     * you want, and `[15, 8, 15]` is how you would ask for it.
+     *
+     * Every entry is a register the type has taken off whatever else is on
+     * screen, so three shades is usually the most a sixteen-colour mode can
+     * afford, and one is what small text should stay at: at ten pixels an em
+     * there is no flank to resolve, only a blur where the stem was.
+     */
+    shades?: readonly number[];
+    /** The index behind them. Left out, the box is transparent and only the glyphs land. */
+    background?: number;
+    /**
+     * Where the ramp sits against the coverage, 0 to 255. Default 128, which
+     * puts a one-shade ramp's edge at half cover - the usual meaning of a
+     * threshold. Lower fattens every stroke and pulls the whole ramp towards
+     * the ink, which is often what small text on a 256-pixel screen wants;
+     * higher thins it.
+     */
+    threshold?: number;
+    /**
+     * How many pixels wide one pixel of the em is drawn, which is how type
+     * keeps its proportions in the 512-wide modes: their pixels are half as
+     * wide as they are tall, so a line set the same way as in SCREEN 5 would
+     * come out condensed to half its width.
+     *
+     * Defaults to whatever the mode needs - 1 in SCREEN 5 and 8, 2 in SCREEN 6
+     * and 7 - so the same style set in either gives type of the same shape,
+     * with twice the detail across it in the 512-wide ones. Pass 1 to work in
+     * the mode's own pixels instead, and anything else to condense or extend.
+     */
+    stretch?: number;
+    /**
+     * Whether this face is a bitmap, and is to be cut as one. No use to any
+     * other kind, and worth understanding before it is turned on.
+     *
+     * A bitmap face is only a bitmap where its own grid lands on ours, and at
+     * the size it was drawn for, two things stop that happening.
+     *
+     * The face may not hang its dots off the baseline. JF Dot K12x10 puts its
+     * rows at 102.4 units apart starting 42 below the baseline, so at ten
+     * pixels an em every row of dots straddles two of ours - 0.59 of one and
+     * 0.41 of the next. Which of them lights is then a question about the
+     * threshold rather than about the face.
+     *
+     * And the browser grid-fits. This face's `gasp` asks for it at anything
+     * above eight pixels, so the rasteriser rounds those straddling edges onto
+     * the pixels - outwards, which turns one row of dots into two. That is a
+     * bitmap face arriving bold, with the dense characters filled in solid, and
+     * no threshold or nudge downstream can undo it: by then the two rows are
+     * equally and honestly covered.
+     *
+     * So the face is cut at four times the size instead, where a hint that
+     * rounds an edge moves it a quarter of one of our pixels, and folded back
+     * four rows to one. The fold has four places to put its seam and the one
+     * with the least grey either side of it is the one that lands the face's
+     * grid on ours. It costs one rasterisation of sixteen times the area, once
+     * per glyph, which is what a cache is for.
+     */
+    snap?: boolean;
+}
+/** A style with every question answered, which is what the rasteriser is handed. */
+export interface ResolvedStyle {
+    /** Ready for `ctx.font`: the shorthand, already assembled. */
+    readonly font: string;
+    readonly size: number;
+    /** Baseline to baseline, or undefined to let the face decide. */
+    readonly lineHeight?: number;
+    readonly letterSpacing: number;
+    readonly align: TextAlign;
+    /** Horizontal scale, for the modes whose pixels are not square. */
+    readonly stretch: number;
+    /** Whether to cut this face as the bitmap it is: oversized, then folded down. */
+    readonly snap: boolean;
+}
+/** What the host hands back: coverage per pixel, and where the type sits in it. */
+export interface Coverage {
+    readonly width: number;
+    readonly height: number;
+    /** 0 to 255, row by row: how much of each pixel the glyphs cover. */
+    readonly alpha: Uint8Array | Uint8ClampedArray;
+    /** Rows from the top of the box down to the first line's baseline. */
+    readonly baseline: number;
+    /** Baseline to baseline, as the rasteriser actually spaced them. */
+    readonly lineHeight: number;
+}
+/** What turns a string into coverage. Replaceable, for hosts with no browser in them. */
+export type TextRasteriser = (text: string, style: ResolvedStyle) => Coverage;
+/** The box a string occupies, and the landmarks inside it. */
+export interface TextBox {
+    readonly width: number;
+    readonly height: number;
+    /** Rows from the top of the box down to the first baseline. */
+    readonly baseline: number;
+    readonly lineHeight: number;
+    readonly lines: number;
+}
+/** A string reduced to indices, ready for VRAM. */
+export interface TextImage extends TextBox {
+    /** One byte per pixel: the colour where there is ink, the background where there is not. */
+    readonly pixels: Uint8Array;
+    /** True when index 0 means "leave what is already there" - no background was asked for. */
+    readonly transparent: boolean;
+}
+export declare class Typesetter {
+    /**
+     * How a string becomes coverage. The default asks the browser, which brings
+     * with it every font the page can see. Under Node there is nothing to ask,
+     * so assign a rasteriser of your own.
+     */
+    rasteriser: TextRasteriser;
+    /**
+     * What every call starts from, so an app can choose its face once and then
+     * pass only what changes.
+     */
+    style: TextStyle;
+    constructor(gfx: Graphics, screen: Screen);
+    /** The box a string will occupy, for centring and layout, without drawing it. */
+    measure(text: string, style?: TextStyle): TextBox;
+    /**
+     * Lays a string out and reduces it to indices. Rendering is the expensive
+     * half of this module, so the last hundred or so results are kept - which
+     * is what makes a caption redrawn every frame cost nothing after the first.
+     */
+    render(text: string, style?: TextStyle): TextImage;
+    /**
+     * Queues a string for the blitter, which lays it down at the chip's pace -
+     * a long line arrives left to right. `x` and `y` are the top left of the
+     * box, and what comes back is the picture that was drawn - its box, and
+     * the indices, should the caller want them again.
+     */
+    draw(x: number, y: number, text: string, style?: TextStyle): TextImage;
+    /** The same, written straight into VRAM. A menu should not arrive in instalments. */
+    drawNow(x: number, y: number, text: string, style?: TextStyle): TextImage;
+    /**
+     * Fetches a font file and makes it available under `family`, which is then
+     * a name `style.font` can use. `source` is a URL, or any CSS `src` value.
+     */
+    load(family: string, source: string, descriptors?: FontFaceDescriptors): Promise<void>;
+    /**
+     * Waits for the fonts a style names to be usable. Worth an `await` in
+     * `init`: a face still loading rasterises as the fallback, silently, and
+     * the layout that comes out is the fallback's.
+     */
+    ready(style?: TextStyle): Promise<void>;
+    /** Drops everything rendered so far. Fonts arriving late is what this is for. */
+    forget(): void;
+    /** What the mode does to a pixel: 2 where they are half as wide as they are tall. */
+}
+/**
+ * The default: lays the string out with the browser's own text engine and
+ * reads the pixels back.
+ *
+ * Two passes over one canvas: measure, which decides how big the box is, then
+ * draw, which needs the canvas at that size. Resizing a canvas resets its
+ * context, so the font is set again in between.
+ *
+ * The measuring is the interesting half. A line is not as wide as its advance -
+ * an italic f or a script tail hangs past both ends - so the box comes from the
+ * bounding boxes the browser reports, and each line is drawn at its own origin
+ * so that the overhang lands inside the picture rather than off the edge of it.
+ *
+ * All of that arithmetic happens in the font's own pixels and is scaled by
+ * `stretch` on the way out, which is what puts type of the right shape on a
+ * screen whose pixels are not square. The glyphs are drawn through the same
+ * scale rather than measured again, so the browser hints and spaces the line
+ * exactly as it would at any other size, and only the raster is wider.
+ */
+export declare function rasteriseWithCanvas(text: string, style: ResolvedStyle): Coverage;
 ```
 
 ### bios/sound

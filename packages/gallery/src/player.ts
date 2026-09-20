@@ -30,7 +30,24 @@ const FRAME = { width: 272, height: 228 } as const;
 
 const CRT_KEY = "fanM.crt";
 
+/**
+ * 作品が日本語を出すためのドット面。作品自身は外から何も読めないので、
+ * プレイヤーが先に読んで登録しておく（@fanm/work の DOT_STYLE がこの名前を
+ * 指している）。読めなければ、作品は代替の等幅フォントで組まれる。
+ */
+const DOT_FONT = { family: "JF Dot K12x10", file: "fonts/JF-Dot-k12x10.woff2" } as const;
+
 const url = (path: string) => new URL(path, location.href).href;
+
+async function loadDotFont(): Promise<void> {
+    try {
+        const face = await new FontFace(DOT_FONT.family, `url(${url(DOT_FONT.file)})`).load();
+        // この集合は仕様では set だが、DOM の型にはその面が無い。
+        (document.fonts as FontFaceSet & { add(font: FontFace): void }).add(face);
+    } catch {
+        // 面が無くても作品は動く。字の形が変わるだけ。
+    }
+}
 
 async function fromCatalog(id: string): Promise<Loaded | null> {
     const response = await fetch("works/index.json").catch(() => null);
@@ -76,7 +93,7 @@ function fit(canvas: HTMLCanvasElement): void {
 if (window.top === window.self) (document.querySelector("#home") as HTMLElement).hidden = false;
 
 const params = new URLSearchParams(location.search);
-const id = params.get("work") ?? "minimal";
+const id = params.get("work") ?? "ambient";
 // 開発中は手元のものを先に見る。公開物を組み立て直さずに試せるように。
 const found = import.meta.env.DEV
     ? (await fromDisk(id)) ?? (await fromCatalog(id))
@@ -90,6 +107,8 @@ if (!found) {
     document.querySelector("#crt")!.remove();
     throw new Error(`作品 ${id} が見つからない`);
 }
+
+await loadDotFont();
 
 const seed = params.has("seed") ? Number(params.get("seed")) : found.seed;
 const button = document.querySelector("#crt") as HTMLButtonElement;

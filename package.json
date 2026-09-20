@@ -16,7 +16,7 @@
     "make": "tsx packages/batch/src/cli.ts make",
     "make:fake": "tsx packages/batch/src/cli.ts make --fake",
     "publish": "npm run gallery:build && tsx packages/batch/src/cli.ts publish",
-    "check:template": "tsx packages/batch/src/cli.ts check templates/minimal",
+    "check:templates": "tsx packages/batch/src/cli.ts check templates/ambient templates/game templates/poem templates/adventure templates/rpg",
     "prompts:api": "tsx packages/batch/src/generate/api-docs.ts",
     "gallery:dev": "npm run dev -w @fanm/gallery",
     "gallery:build": "npm run build -w @fanm/gallery"

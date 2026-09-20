@@ -183,6 +183,6 @@ AIのAPIキーとCloudflareの認証情報はバッチ処理が管理し、生�
 git submodule update --init
 npm install
 npm run typecheck
-npm run check:template     # バッチ：テンプレートをヘッドレスで動かして撮影
-npm run gallery:dev        # ギャラリー：play.html?work=minimal でテンプレートを再生
+npm run check:templates    # バッチ：5つのテンプレートをヘッドレスで動かして撮影
+npm run gallery:dev        # ギャラリー：play.html?work=ambient でテンプレートを再生
 ```

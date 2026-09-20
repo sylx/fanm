@@ -2,7 +2,7 @@
 // バッチ処理の入口。
 //
 //     fanm make [--fake]        ジョブを一つ最後まで進める。途中のジョブがあればその続きから
-//     fanm check <dir>          work.ts と meta.json のあるディレクトリを検査する（AIは呼ばない）
+//     fanm check <dir>...       work.ts と meta.json のあるディレクトリを検査する（AIは呼ばない）
 //     fanm budget               今月の使用額
 //
 // 制作は一度に一つだけ。すでに動いていれば、make はその様子を映すだけにする。
@@ -95,10 +95,17 @@ switch (command) {
     case "make":
         process.exitCode = await runMake();
         break;
-    case "check":
-        if (!args[0]) throw new Error("usage: fanm check <dir>");
-        process.exitCode = await runCheck(args[0]);
+    case "check": {
+        const dirs = args.filter(a => !a.startsWith("--"));
+        if (!dirs.length) throw new Error("usage: fanm check <dir>...");
+        let failed = 0;
+        for (const dir of dirs) {
+            if (dirs.length > 1) console.log(`\n=== ${dir} ===`);
+            failed += await runCheck(dir);
+        }
+        process.exitCode = failed ? 1 : 0;
         break;
+    }
     case "publish": {
         const site = join(root, "site");
         const result = await assemble(join(root, "works"), site);
