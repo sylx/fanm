@@ -47,6 +47,11 @@ RUN set -eu; \
 # ギャラリーの殻。公開のたびにここから写す（packages/gallery/dist）。
 RUN npm run gallery:build
 
+# wrangler は deploy のたびに .wrangler/tmp を作る。/app 自体は root のままに
+# しておきたい（生成コードにも常駐にも、自分の置き場所を書き換えさせない）ので、
+# 書いてよい場所だけをここで作り、node のものとして次の段へ渡す。
+RUN mkdir -p /app/.wrangler
+
 
 FROM node:24-slim
 WORKDIR /app
