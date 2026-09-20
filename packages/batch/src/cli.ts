@@ -55,8 +55,11 @@ const fake = args.includes("--fake") || config.providers.every(p => p.name === "
 const root = fake ? join(VAR, "fake") : VAR;
 const ledger = () => new Ledger(join(root, "ledger"), config.budget);
 
-/** 頼む相手の札束。--fake のときだけ、設定を無視して偽のAI一人にする。 */
-const deck = args.includes("--fake") ? FAKE_DECK : config.providers;
+/** --fake のときだけ、設定を無視して偽のAI一人に固定する。常駐にもこれを渡す。 */
+const fixedDeck = args.includes("--fake") ? FAKE_DECK : undefined;
+
+/** 頼む相手の札束。一度きりの命令（make / makenow）は、いま読んだ設定のまま使う。 */
+const deck = fixedDeck ?? config.providers;
 
 /** `--旗 値` でも `--旗=値` でも読む。 */
 function flag(name: string): string | undefined {
@@ -170,7 +173,7 @@ async function runMakeNow(local: boolean): Promise<number> {
         takeRequest(root);
         console.log("頼みを受け取る常駐がいなかった。ここで作る。");
     }
-    return await runLoop({ config, root, fake, deck, publisher: publisher(local), once: true, provider });
+    return await runLoop({ config, root, fake, deck: fixedDeck, publisher: publisher(local), once: true, provider });
 }
 
 async function runCheck(dir: string): Promise<number> {
@@ -252,7 +255,7 @@ switch (command) {
             config,
             root,
             fake,
-            deck,
+            deck: fixedDeck,
             publisher: publisher(args.includes("--local")),
             once: args.includes("--once")
         });

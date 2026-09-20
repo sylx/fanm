@@ -14,7 +14,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { Archive } from "../archive/archive.js";
 import { BudgetExceeded, Ledger } from "../budget/ledger.js";
-import type { Config, ProviderConfig } from "../config.js";
+import { changedSections, ConfigWatch, type Config, type ProviderConfig } from "../config.js";
 import { JobStore } from "../jobs/job.js";
 import { make } from "../jobs/make.js";
 import { deckBrief, deckNamed, verifyDeck } from "../providers/deck.js";
@@ -42,8 +42,8 @@ export interface LoopOptions {
     /** 制作状態の置き場所。偽のAIなら <VAR>/fake/。 */
     readonly root: string;
     readonly fake: boolean;
-    /** 頼む相手の札束。ジョブごとに一人引く（providers/deck.ts）。 */
-    readonly deck: readonly ProviderConfig[];
+    /** 札束をこれに固定する（--fake）。省くと設定の providers を使い、書き替えれば追う。 */
+    readonly deck?: readonly ProviderConfig[];
     /** 送り先。undefined なら <VAR>/site/ を組み立てるだけで、どこへも送らない。 */
     readonly publisher?: Publisher;
     /** 一作品だけ作って終わる（動作確認用）。 */
@@ -55,7 +55,11 @@ export interface LoopOptions {
 const sleep = (ms: number) => new Promise(done => setTimeout(done, ms));
 
 export async function runLoop(options: LoopOptions): Promise<number> {
-    const { config, root } = options;
+    const { root } = options;
+    // 設定は起動時に固めない。永続ボリュームの上で書き替えられたら、次に目を
+    // 覚ましたときに読み直す（制作に入るのはそのあとなので、作るときの設定は必ず新しい）。
+    let config = options.config;
+    let deck = options.deck ?? config.providers;
     mkdirSync(root, { recursive: true });
     const lock = acquire(root);
     if (!lock.held) {
@@ -66,14 +70,38 @@ export async function runLoop(options: LoopOptions): Promise<number> {
     const log = new Log(logPath(root));
     const store = new StateStore(statePath(root));
     const notifier = new Notifier(store, log);
-    const ledger = new Ledger(join(root, "ledger"), config.budget);
+    let ledger = new Ledger(join(root, "ledger"), config.budget);
     const jobs = new JobStore(join(root, "jobs"));
     const archive = new Archive(join(root, "works"));
 
     const swept = ledger.sweepReserved();
     if (swept) log.line(`前回の中断で予約のまま残っていた ${swept} 件を、予約額のまま確定した`);
-    verifyDeck(options.deck);
-    log.line(`常駐を始める（${options.fake ? "偽のAI" : `札束は ${deckBrief(options.deck)}`}、状態は ${root}）`);
+    verifyDeck(deck);
+    log.line(`常駐を始める（${options.fake ? "偽のAI" : `札束は ${deckBrief(deck)}`}、状態は ${root}）`);
+
+    const watch = new ConfigWatch();
+    /**
+     * 設定を読み直す。新しい札束を作れない（鍵が無い、単価表に無いモデル）なら、
+     * 前の設定のまま続ける。動いているものを、書き間違いで止めない。
+     */
+    function refresh(): void {
+        const next = watch.next(line => log.line(line));
+        if (!next) return;
+        const nextDeck = options.deck ?? next.providers;
+        try {
+            verifyDeck(nextDeck);
+        } catch (e) {
+            log.line(`新しい設定の札束を使えない。前のまま続ける: ${(e as Error).message}`);
+            return;
+        }
+        const changed = changedSections(config, next);
+        config = next;
+        deck = nextDeck;
+        ledger = new Ledger(join(root, "ledger"), config.budget);
+        log.line(`設定を読み直した（${changed.join("、") || "中身は同じ"}）。札束は ${deckBrief(deck)}`);
+        // 送り先だけは起動時に決まる（publisher を作り直さない）。間隔と貼るリンクは追う。
+        if (changed.includes("publish")) log.line("公開の送り先を変えたなら、入れ替えないと効かない");
+    }
 
     // 生きている目印は、制作の途中でも書き続ける。一作品つくるのに数分かかるので、
     // 輪が一周するのを待っていると、動いていても止まって見える。
@@ -96,6 +124,7 @@ export async function runLoop(options: LoopOptions): Promise<number> {
     for (;;) {
         const now = new Date();
         try {
+            refresh();
             // 頼まれていれば受け取る。応じられなくても、ここで消える（頼みは溜めない）。
             const asked = takeRequest(root);
             const decision = decide({
@@ -174,15 +203,15 @@ export async function runLoop(options: LoopOptions): Promise<number> {
      */
     async function makeOne(wanted?: string): Promise<void> {
         const job = jobs.unfinished()[0] ?? jobs.create();
-        let deck = options.deck;
+        let hand = deck;
         if (wanted) {
             const only = deckNamed(deck, wanted);
-            if (only) deck = only;
+            if (only) hand = only;
             else log.line(`札束に ${wanted} がいない。ふだんどおり引く`);
         }
         log.line(`${job.id}: ${job.state} から開始${options.fake ? "（偽のAI）" : ""}`);
         try {
-            const done = await make({ config, deck, ledger, jobs, archive, log }, job);
+            const done = await make({ config, deck: hand, ledger, jobs, archive, log }, job);
             const usd = done.calls.reduce((n, c) => n + c.usd, 0);
             log.line(`${done.id}: ${done.state}（AI 呼出し ${done.calls.length} 回、$${usd.toFixed(4)}）`);
             notifier.clear("provider");

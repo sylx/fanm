@@ -94,11 +94,14 @@ type UserConfig = Partial2<Omit<Config, "providers">> & {
     provider?: ProviderConfig;
 };
 
+/** 設定の在り処。常駐はここを読み直す。 */
+export const CONFIG_PATH = process.env.FANM_CONFIG ?? "config/fanm.json";
+
 /**
  * 設定を読む。本番では永続ボリュームの上（FANM_CONFIG=/data/fanm.json）に置くと、
  * イメージを作り直さずに頻度や予算を変えられる。無ければ既定値。
  */
-export function loadConfig(path = process.env.FANM_CONFIG ?? "config/fanm.json"): Config {
+export function loadConfig(path = CONFIG_PATH): Config {
     if (!existsSync(path)) return DEFAULTS;
     const user = JSON.parse(readFileSync(path, "utf8")) as UserConfig;
     const providers = user.providers ?? (user.provider ? [user.provider] : DEFAULTS.providers);
@@ -114,3 +117,48 @@ export function loadConfig(path = process.env.FANM_CONFIG ?? "config/fanm.json")
 
 /** 制作状態のルート。ジョブ、予算台帳、作品庫はすべてこの下。 */
 export const VAR = resolve(process.env.FANM_VAR ?? "var");
+
+/**
+ * 設定ファイルを見張る。常駐はこれを繰り返し叩き、中身が変わっていたら読み直す。
+ *
+ * 置き場所を永続ボリュームにしたのは、イメージを作り直さずに予算や頻度を変える
+ * ためだった。起動時に一度しか読まないなら、結局コンテナを入れ替えることになる。
+ *
+ * 読めないもの（書きかけ、壊れた JSON）は捨てて、前の設定のまま続ける。設定を
+ * 直している最中の一瞬を掴んだだけで制作が止まるのは、割に合わない。同じ中身を
+ * 二度は報せないので、壊れたまま置かれていても30秒ごとに言い続けたりはしない。
+ */
+export class ConfigWatch {
+    private raw: string | null;
+
+    constructor(private readonly path = CONFIG_PATH) {
+        this.raw = read(this.path);
+    }
+
+    /**
+     * 前に読んだときから中身が変わっていれば、新しい設定。変わっていなければ
+     * undefined。読めなければ note に流して undefined（前のまま続ける合図）。
+     */
+    next(note: (line: string) => void): Config | undefined {
+        const raw = read(this.path);
+        if (raw === this.raw) return undefined;
+        // 壊れていても覚える。同じ壊れ方を繰り返し報せないため。
+        this.raw = raw;
+        try {
+            return loadConfig(this.path);
+        } catch (e) {
+            note(`設定を読めない。前のまま続ける: ${(e as Error).message}`);
+            return undefined;
+        }
+    }
+}
+
+function read(path: string): string | null {
+    return existsSync(path) ? readFileSync(path, "utf8") : null;
+}
+
+/** 二つの設定で中身の違う節の名前。何が変わったかをログに出すため。 */
+export function changedSections(before: Config, after: Config): (keyof Config)[] {
+    return (Object.keys(after) as (keyof Config)[])
+        .filter(key => JSON.stringify(before[key]) !== JSON.stringify(after[key]));
+}
