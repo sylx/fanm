@@ -197,6 +197,7 @@ npm run publish:local         # 公開物を var/site/ に組み立てる（ど�
 npm run start:fake -- --once  # 偽のAIで制作の輪を一周（企画から公開物の組み立てまで）
 npm start                     # 常駐して作り続ける。本番（Coolify）が動かすのもこれ
 npm run makenow               # 次の間隔を待たずに一作品つくって公開する
+npm run makenow -- --provider claude   # 相手を指して一作品（札束から引かせない）
 npm run status                # いまどうなっているか
 npm run overlap               # 採用作が実例や過去作をどれだけ写しているか
 npm run make -- --form rpg    # 型を指定して一作品作る（手元で一つの型を試すとき）

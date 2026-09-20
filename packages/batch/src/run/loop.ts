@@ -17,7 +17,7 @@ import { BudgetExceeded, Ledger } from "../budget/ledger.js";
 import type { Config, ProviderConfig } from "../config.js";
 import { JobStore } from "../jobs/job.js";
 import { make } from "../jobs/make.js";
-import { deckBrief, verifyDeck } from "../providers/deck.js";
+import { deckBrief, deckNamed, verifyDeck } from "../providers/deck.js";
 import { ProviderError } from "../providers/provider.js";
 import { PublishError, type Publisher } from "../publish/publisher.js";
 import { assemble } from "../publish/site.js";
@@ -48,6 +48,8 @@ export interface LoopOptions {
     readonly publisher?: Publisher;
     /** 一作品だけ作って終わる（動作確認用）。 */
     readonly once?: boolean;
+    /** 今回だけ頼む相手を指す（makenow --provider）。事業者の名前かモデル名。 */
+    readonly provider?: string;
 }
 
 const sleep = (ms: number) => new Promise(done => setTimeout(done, ms));
@@ -125,7 +127,7 @@ export async function runLoop(options: LoopOptions): Promise<number> {
                 setPhase("making");
                 // 始めた時刻を先に書く。作っている途中で落ちても、次の間隔はここから数える。
                 store.change(s => { s.lastAttemptAt = new Date().toISOString(); });
-                await makeOne();
+                await makeOne(asked?.provider ?? options.provider);
                 announced = "";
             }
 
@@ -166,12 +168,21 @@ export async function runLoop(options: LoopOptions): Promise<number> {
         await sleep(TICK_MS);
     }
 
-    /** 一作品つくる。中断していたジョブがあればその続きから。 */
-    async function makeOne(): Promise<void> {
+    /**
+     * 一作品つくる。中断していたジョブがあればその続きから。
+     * 相手を指されていれば、その札だけの札束から引かせる。
+     */
+    async function makeOne(wanted?: string): Promise<void> {
         const job = jobs.unfinished()[0] ?? jobs.create();
+        let deck = options.deck;
+        if (wanted) {
+            const only = deckNamed(deck, wanted);
+            if (only) deck = only;
+            else log.line(`札束に ${wanted} がいない。ふだんどおり引く`);
+        }
         log.line(`${job.id}: ${job.state} から開始${options.fake ? "（偽のAI）" : ""}`);
         try {
-            const done = await make({ config, deck: options.deck, ledger, jobs, archive, log }, job);
+            const done = await make({ config, deck, ledger, jobs, archive, log }, job);
             const usd = done.calls.reduce((n, c) => n + c.usd, 0);
             log.line(`${done.id}: ${done.state}（AI 呼出し ${done.calls.length} 回、$${usd.toFixed(4)}）`);
             notifier.clear("provider");

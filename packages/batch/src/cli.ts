@@ -5,7 +5,9 @@
 //     fanm make [--fake] [--form <型>]
 //                               ジョブを一つ最後まで進める。途中のジョブがあればその続きから。
 //                               --form は型を指定する（手元で一つの型を試すとき用。本番は指定しない）
-//     fanm makenow [--local]    次の間隔を待たずに一作品つくって公開する。常駐が動いていれば横から頼む
+//     fanm makenow [--local] [--provider <名前>]
+//                               次の間隔を待たずに一作品つくって公開する。常駐が動いていれば横から頼む。
+//                               --provider は今回だけ頼む相手を指す（事業者の名前かモデル名）
 //     fanm check <dir>...       work.ts と meta.json のあるディレクトリを検査する（AIは呼ばない）
 //     fanm overlap              採用作が実例や過去作をどれだけ写しているかを並べる（AIは呼ばない）
 //     fanm status               いまどうなっているか。動いていなければ終了コード 1
@@ -29,7 +31,7 @@ import { JobStore } from "./jobs/job.js";
 import { make } from "./jobs/make.js";
 import { FORMS, formOf } from "./plan/forms.js";
 import { template } from "./prompts.js";
-import { deckBrief, FAKE_DECK, verifyDeck } from "./providers/deck.js";
+import { deckBrief, deckNamed, FAKE_DECK, verifyDeck } from "./providers/deck.js";
 import { CloudflarePublisher, PublishError, type Publisher } from "./publish/publisher.js";
 import { assemble } from "./publish/site.js";
 import { acquire, isRunning } from "./run/lock.js";
@@ -56,6 +58,24 @@ const ledger = () => new Ledger(join(root, "ledger"), config.budget);
 /** 頼む相手の札束。--fake のときだけ、設定を無視して偽のAI一人にする。 */
 const deck = args.includes("--fake") ? FAKE_DECK : config.providers;
 
+/** `--旗 値` でも `--旗=値` でも読む。 */
+function flag(name: string): string | undefined {
+    const prefix = `--${name}=`;
+    const inline = args.find(a => a.startsWith(prefix));
+    if (inline) return inline.slice(prefix.length);
+    const at = args.indexOf(`--${name}`);
+    return at < 0 ? undefined : args[at + 1];
+}
+
+/** `--provider` の指定。札束にいない相手を指されたら、頼む前にここで止める。 */
+function wantedProvider(): string | undefined {
+    const wanted = flag("provider");
+    if (wanted && !deckNamed(deck, wanted)) {
+        throw new Error(`札束に ${wanted} がいない。いるのは ${deck.map(e => `${e.name} / ${e.model}`).join("、")}`);
+    }
+    return wanted;
+}
+
 async function runMake(): Promise<number> {
     mkdirSync(root, { recursive: true });
     const lock = acquire(root);
@@ -76,8 +96,7 @@ async function runMake(): Promise<number> {
     const jobs = new JobStore(join(root, "jobs"));
     const job = jobs.unfinished()[0] ?? jobs.create();
     // 手元で一つの型を試すための指定。企画が済んでいないジョブにだけ効く。
-    const wanted = args.find(a => a.startsWith("--form="))?.slice("--form=".length)
-        ?? (args.includes("--form") ? args[args.indexOf("--form") + 1] : undefined);
+    const wanted = flag("form");
     if (wanted) {
         if (!FORMS.some(f => f.id === wanted)) throw new Error(`型 ${wanted} はない。あるのは ${FORMS.map(f => f.id).join(", ")}`);
         if (job.plan) log.line(`${job.id} は企画済みなので --form は効かない（型は ${job.form}）`);
@@ -133,13 +152,14 @@ async function watchRequest(): Promise<string> {
 /** 次の間隔を待たずに一作品。常駐が動いていれば頼み、いなければ自分で作って公開する。 */
 async function runMakeNow(local: boolean): Promise<number> {
     mkdirSync(root, { recursive: true });
+    const provider = wantedProvider();
     const running = isRunning(root);
     if (running) {
         if (readState(root).beat?.phase === "making") {
             console.log("いま別の作品を作っている。それが終わってから、続けてもう一作品つくる。");
         }
-        askNow(root);
-        console.log(`常駐（pid ${running.pid}）に「いま作れ」と頼んだ。30秒以内に始まる。Ctrl-C で見るのをやめても、制作は続く。`);
+        askNow(root, { provider });
+        console.log(`常駐（pid ${running.pid}）に「いま作れ」と頼んだ${provider ? `（相手は ${provider}）` : ""}。30秒以内に始まる。Ctrl-C で見るのをやめても、制作は続く。`);
         const phase = await watchRequest();
         if (asked(root) === null) {
             if (phase !== "paused") return 0;
@@ -150,7 +170,7 @@ async function runMakeNow(local: boolean): Promise<number> {
         takeRequest(root);
         console.log("頼みを受け取る常駐がいなかった。ここで作る。");
     }
-    return await runLoop({ config, root, fake, deck, publisher: publisher(local), once: true });
+    return await runLoop({ config, root, fake, deck, publisher: publisher(local), once: true, provider });
 }
 
 async function runCheck(dir: string): Promise<number> {
@@ -284,6 +304,6 @@ switch (command) {
         break;
     }
     default:
-        console.error("usage: fanm run [--once] | make [--fake] [--form <型>] | makenow [--local] | check <dir> | overlap | status | publish [--local] | budget");
+        console.error("usage: fanm run [--once] | make [--fake] [--form <型>] | makenow [--local] [--provider <名前>] | check <dir> | overlap | status | publish [--local] | budget");
         process.exitCode = 2;
 }

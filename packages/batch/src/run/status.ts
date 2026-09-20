@@ -62,7 +62,7 @@ export function status(root: string, config: Config): { text: string; healthy: b
         `  途中のジョブ: ${unfinished.length ? unfinished.map(j => `${j.id}(${j.state})`).join(", ") : "なし"}`
     ];
     const now = asked(root);
-    if (now) lines.push(`  「いま作れ」と頼まれている（${ago(now)}、${running ? "次に目を覚ましたときに始まる" : "受け取る常駐がいない"}）`);
+    if (now) lines.push(`  「いま作れ」と頼まれている（${ago(now.at)}${now.provider ? `、相手は ${now.provider}` : ""}、${running ? "次に目を覚ましたときに始まる" : "受け取る常駐がいない"}）`);
     if (state.attention) lines.push(`  人の対応が必要: ${state.attention.message}（${ago(state.attention.at)}）`);
 
     return { text: lines.join("\n"), healthy: Boolean(running) && fresh && !state.attention };

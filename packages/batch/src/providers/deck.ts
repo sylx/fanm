@@ -51,6 +51,16 @@ export function drawProvider(
     return candidates[Math.floor(random() * candidates.length)] ?? pool[0];
 }
 
+/**
+ * 指定された相手だけの札束。事業者の名前（`claude`）でも、モデル名
+ * （`claude-opus-5`）でもよい。名前で指すと、その事業者の札が複数あれば
+ * その中から引く。合う札がなければ undefined。
+ */
+export function deckNamed(deck: readonly ProviderConfig[], wanted: string): readonly ProviderConfig[] | undefined {
+    const found = deck.filter(e => e.name === wanted || e.model === wanted);
+    return found.length ? found : undefined;
+}
+
 /** 札を実際の接続にする。鍵が無ければここで止まる。 */
 export function createProvider(entry: ProviderConfig): Provider {
     if (entry.name === "fake") return new FakeProvider(entry.model);
