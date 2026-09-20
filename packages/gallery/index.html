@@ -66,6 +66,16 @@
             color: var(--dim); font: inherit; }
     #more:hover, #more:focus-visible { color: var(--fg); border-color: var(--fg); }
     #empty { color: var(--dim); }
+
+    footer {
+      margin-top: 48px;
+      display: flex;
+      justify-content: center;
+      color: var(--dim);
+      align-items: flex-end;
+      p { margin: 0; font-size: 13px; }
+      img { height: 64px; width: auto; margin-right: 8px; }
+    }
   </style>
 </head>
 <body>
@@ -88,6 +98,10 @@
     <p id="empty" hidden>まだ作品がありません。</p>
     <ul id="catalog"></ul>
     <button id="more" type="button" hidden></button>
+    <footer>
+      <img src="./assets/chara.png" alt="fanM">
+      <p>&copy; 2026 fanM. All rights reserved.</p>
+    </footer>
   </main>
   <script type="module" src="./src/catalog.ts"></script>
 </body>
