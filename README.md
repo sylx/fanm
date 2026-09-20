@@ -188,6 +188,7 @@ npm run gallery:dev           # ギャラリー：play.html?work=ambient でテ�
 npm run publish:local         # 公開物を var/site/ に組み立てる（どこへも送らない）
 npm run start:fake -- --once  # 偽のAIで制作の輪を一周（企画から公開物の組み立てまで）
 npm start                     # 常駐して作り続ける。本番（Coolify）が動かすのもこれ
+npm run makenow               # 次の間隔を待たずに一作品つくって公開する
 npm run status                # いまどうなっているか
 ```
 

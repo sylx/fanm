@@ -10,6 +10,7 @@ import type { Config } from "../config.js";
 import { JobStore } from "../jobs/job.js";
 import { UNKNOWN_COST_RATIO } from "../scheduler/scheduler.js";
 import { isRunning } from "./lock.js";
+import { asked } from "./request.js";
 import { readState } from "./state.js";
 
 /** これより古い目印は、止まっているか固まっているとみなす。 */
@@ -60,6 +61,8 @@ export function status(root: string, config: Config): { text: string; healthy: b
         `  作品: ${works.length} 件（未公開 ${works.filter(id => !sent.has(id)).length} 件）、最後の公開は${ago(state.lastPublishAt)}`,
         `  途中のジョブ: ${unfinished.length ? unfinished.map(j => `${j.id}(${j.state})`).join(", ") : "なし"}`
     ];
+    const now = asked(root);
+    if (now) lines.push(`  「いま作れ」と頼まれている（${ago(now)}、${running ? "次に目を覚ましたときに始まる" : "受け取る常駐がいない"}）`);
     if (state.attention) lines.push(`  人の対応が必要: ${state.attention.message}（${ago(state.attention.at)}）`);
 
     return { text: lines.join("\n"), healthy: Boolean(running) && fresh && !state.attention };

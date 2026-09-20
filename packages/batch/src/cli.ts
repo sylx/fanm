@@ -3,13 +3,15 @@
 //
 //     fanm run [--once]         常駐して制作を回し続ける。本番（Coolify）はこれを動かす
 //     fanm make [--fake]        ジョブを一つ最後まで進める。途中のジョブがあればその続きから
+//     fanm makenow [--local]    次の間隔を待たずに一作品つくって公開する。常駐が動いていれば横から頼む
 //     fanm check <dir>...       work.ts と meta.json のあるディレクトリを検査する（AIは呼ばない）
 //     fanm status               いまどうなっているか。動いていなければ終了コード 1
 //     fanm budget               今月の使用額
-//
-// 制作は一度に一つだけ。すでに動いていれば、make はその様子を映すだけにする。
 //     fanm publish [--local]    採用作から公開物を組み立て（<VAR>/site/）、Cloudflare へ送る
 //                               --local は組み立てるところまで。偽のAIの作品も送らない
+//
+// 制作は一度に一つだけ。すでに動いていれば、make はその様子を映すだけにし、
+// makenow は動いている常駐に「いま作れ」と頼んで、その様子を映す。
 //
 // --fake は APIキーなしで一周させる偽のAIを使う。予算台帳も別（<VAR>/fake/）。
 
@@ -24,8 +26,10 @@ import { make } from "./jobs/make.js";
 import { DeepSeek } from "./providers/deepseek.js";
 import { CloudflarePublisher, PublishError, type Publisher } from "./publish/publisher.js";
 import { assemble } from "./publish/site.js";
-import { acquire } from "./run/lock.js";
+import { acquire, isRunning } from "./run/lock.js";
 import { runLoop } from "./run/loop.js";
+import { askNow, asked, takeRequest } from "./run/request.js";
+import { readState } from "./run/state.js";
 import { status } from "./run/status.js";
 import { follow, Log, logPath } from "./run/log.js";
 import { FakeProvider } from "./providers/fake.js";
@@ -82,6 +86,56 @@ async function runMake(): Promise<number> {
     } finally {
         lock.release();
     }
+}
+
+/**
+ * 頼んだ制作を見届ける。常駐は終わらないので、頼みが受け取られ、作り終えて
+ * 静かになったところで戻る。最後に見えた様子を返す。
+ */
+async function watchRequest(): Promise<string> {
+    let taken = false;      // 常駐が頼みを受け取った
+    let began = false;      // 受け取ったあと、本当に作り始めた
+    let phase = "";
+    await follow(root, {
+        until: () => {
+            // 受け取られるまでは、いま何をしていても見続ける（前の作品の途中かもしれない）。
+            if (!taken) {
+                taken = asked(root) === null;
+                return false;
+            }
+            phase = readState(root).beat?.phase ?? "";
+            if (phase === "making" || phase === "publishing") {
+                began = true;
+                return false;
+            }
+            // 始まったなら、終わって静かになった。休んでいるなら、受け取ったが応じない。
+            return began || phase === "paused";
+        }
+    });
+    return phase;
+}
+
+/** 次の間隔を待たずに一作品。常駐が動いていれば頼み、いなければ自分で作って公開する。 */
+async function runMakeNow(local: boolean): Promise<number> {
+    mkdirSync(root, { recursive: true });
+    const running = isRunning(root);
+    if (running) {
+        if (readState(root).beat?.phase === "making") {
+            console.log("いま別の作品を作っている。それが終わってから、続けてもう一作品つくる。");
+        }
+        askNow(root);
+        console.log(`常駐（pid ${running.pid}）に「いま作れ」と頼んだ。30秒以内に始まる。Ctrl-C で見るのをやめても、制作は続く。`);
+        const phase = await watchRequest();
+        if (asked(root) === null) {
+            if (phase !== "paused") return 0;
+            console.log("常駐は休んでいるので作らなかった。fanm status で理由を見る。");
+            return 1;
+        }
+        // 鍵は握られていたが、頼みを受け取る相手ではなかった（fanm make が動いていて、終わった）。
+        takeRequest(root);
+        console.log("頼みを受け取る常駐がいなかった。ここで作る。");
+    }
+    return await runLoop({ config, root, fake, provider: provider(), publisher: publisher(local), once: true });
 }
 
 async function runCheck(dir: string): Promise<number> {
@@ -144,6 +198,9 @@ switch (command) {
     case "make":
         process.exitCode = await runMake();
         break;
+    case "makenow":
+        process.exitCode = await runMakeNow(args.includes("--local"));
+        break;
     case "check": {
         const dirs = args.filter(a => !a.startsWith("--"));
         if (!dirs.length) throw new Error("usage: fanm check <dir>...");
@@ -176,6 +233,6 @@ switch (command) {
         break;
     }
     default:
-        console.error("usage: fanm run [--once] | make [--fake] | check <dir> | status | publish [--local] | budget");
+        console.error("usage: fanm run [--once] | make [--fake] | makenow [--local] | check <dir> | status | publish [--local] | budget");
         process.exitCode = 2;
 }

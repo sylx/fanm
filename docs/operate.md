@@ -5,6 +5,7 @@
 ```text
 fanm run（常駐）
   30秒ごとに目を覚ます
+    ├─ 「いま作れ」と頼まれていないか？（<VAR>/now）
     ├─ いま作ってよいか？（残予算と残日数から頻度を決める）
     │    └─ よければ一作品つくる（企画 → 生成 → 検査 → 修正 → 採用/不採用）
     └─ 送るものが溜まっていて、前の公開から一定時間たったか？
@@ -29,6 +30,29 @@ fanm run（常駐）
 | 中断したジョブがある | 間隔を待たずに、起動直後に続きから片づける |
 
 公開は制作より粗い間隔で行う（既定6時間、`publish.everyHours`）。送っていない採用作があるときだけ組み立てて送るので、作品が増えない限り通信は起きない。
+
+## 次を待たずに作らせる
+
+間隔は残予算から決まるので、ふつうは数時間おきになる。それを待てないときは `makenow`。一作品つくって、出来たその場で公開する（知らせもそこで飛ぶ）。
+
+```bash
+npm run makenow                 # 手元で。つくって Cloudflare まで
+npm run makenow -- --local      # 送らずに var/site へ組み立てるだけ
+docker exec -it <container> node_modules/.bin/tsx packages/batch/src/cli.ts makenow
+```
+
+常駐が動いているかどうかで、することが変わる。
+
+| 常駐 | `makenow` がすること |
+| --- | --- |
+| 動いている | `<VAR>/now` を置いて「いま作れ」と頼む。常駐が次に目を覚ましたとき（30秒以内）に受け取り、間隔も公開の間合いも飛ばして作って送る。頼んだ側はログを映し、終わったら戻る |
+| 動いていない | その場で自分が一作品つくって公開する（`fanm run --once` と同じ） |
+
+頼みを覚え書き（`run.json`）ではなく別のファイルにしてあるのには理由がある。常駐は覚え書きをメモリに持ったまま30秒ごとに書き戻すので、外から `run.json` の「最後に作った時刻」を直しても、上書きされて消える。読むだけのファイルなら、動いている最中でも横から渡せる。
+
+飛ばすのは間隔だけで、予算は飛ばさない。使い切って休んでいるときは、頼みを受け取ったうえで断り、ログに残す（`makenow` は終了コード 1 で戻る）。制作の最中に頼めば、それが終わってから続けてもう一作品つくる。頼みは溜まらず、何度置いても一回分。
+
+頼んで作った分も「最後に制作を始めた時刻」に記録するので、次の制作はそこから数え直す。急かした分だけ、あとの間隔が延びる。
 
 ## 知らせ
 
@@ -60,6 +84,7 @@ npm run start:fake             # 偽のAIで常駐（Ctrl-C で止まる）
 npm run status -- --fake       # 偽のAIの状態を見る
 npm start                      # 本物のAIで常駐
 npm run status                 # いまどうなっているか
+npm run makenow -- --fake      # 偽のAIで「いま作れ」を試す（偽の作品は送らない）
 ```
 
 `fanm status` は、常駐が動いていて・目印が新しく・人を呼んでいなければ終了コード 0、そうでなければ 1。コンテナの健康診断もこれを使っている。
@@ -87,6 +112,7 @@ npm run status                 # いまどうなっているか
 | 公開物 | `<VAR>/site/` |
 | 常駐の覚え書き（最後の制作・公開、生きている目印、人を呼んだ用件） | `<VAR>/run.json` |
 | 二重起動を防ぐ鍵 | `<VAR>/run.lock` |
+| 「いま作れ」の頼み（受け取ると消える） | `<VAR>/now` |
 | ログ | `<VAR>/run.log` |
 | 設定（任意） | `FANM_CONFIG`（本番では `/data/fanm.json`） |
 
@@ -98,6 +124,7 @@ npm run status                 # いまどうなっているか
 docker build -t fanm-batch .
 docker run -d --name fanm -v fanm-var:/data --env-file .env fanm-batch
 docker exec fanm node_modules/.bin/tsx packages/batch/src/cli.ts status
+docker exec -it fanm node_modules/.bin/tsx packages/batch/src/cli.ts makenow
 ```
 
 イメージには、固定したエンジン（`engine/COMMIT` にそのコミットを控える）、ギャラリーの殻、依存が入る。`.git` は最後の段に残さない。
@@ -226,6 +253,7 @@ fantasy-msx は submodule なので、Coolify の clone が展開するとは限
 | --- | --- | --- |
 | `常駐: 動いていない` | 落ちたか、まだ起動していない | Coolify のログを見る。`restart: unless-stopped` なので、落ちたなら自動で戻っている |
 | `いま: 休んでいる` | 予算切れ。翌月まで待つ | 増やすなら `/data/fanm.json` の `budget.monthlyUsd` |
+| 次の制作まで待てない | 間隔は残予算から決まっている | `makenow` で横から頼む（[次を待たずに作らせる](#次を待たずに作らせる)） |
 | `人の対応が必要: AIのAPIを使えない` | 鍵切れ・残高切れ | 環境変数を直して再デプロイ |
 | `人の対応が必要: 公開できない` | Cloudflare の鍵か権限 | [docs/deploy.md](deploy.md) の手順で作り直す |
 | `目印は…、古い` | 固まっている | コンテナを再起動する。ジョブは続きから進む |

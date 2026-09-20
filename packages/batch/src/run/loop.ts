@@ -3,7 +3,8 @@
 //     待つ → 一作品つくる → （頃合いを見て）公開する → 待つ …
 //
 // 30秒ごとに目を覚まし、そのたびに「いま作ってよいか」をスケジューラーに訊く。
-// 頻度は残予算と実測の費用から決まる（scheduler.ts）。
+// 頻度は残予算と実測の費用から決まる（scheduler.ts）。次まで待てないときは横から
+// 頼める（request.ts）。頼まれた回は間隔も公開の間合いも飛ばし、出来たその場で公開する。
 //
 // 止まらないことを第一にする。日常の失敗（不採用、一時的な通信断）は記録して次へ進み、
 // 放っておいても直らないもの（鍵切れ、権限不足、続けざまの想定外）だけ人を呼ぶ。
@@ -21,6 +22,7 @@ import { PublishError, type Publisher } from "../publish/publisher.js";
 import { assemble } from "../publish/site.js";
 import { decide, UNKNOWN_COST_RATIO } from "../scheduler/scheduler.js";
 import { acquire } from "./lock.js";
+import { takeRequest } from "./request.js";
 import { Log, logPath } from "./log.js";
 import { Notifier } from "./notify.js";
 import { StateStore, statePath } from "./state.js";
@@ -89,6 +91,8 @@ export async function runLoop(options: LoopOptions): Promise<number> {
     for (;;) {
         const now = new Date();
         try {
+            // 頼まれていれば受け取る。応じられなくても、ここで消える（頼みは溜めない）。
+            const asked = takeRequest(root);
             const decision = decide({
                 now,
                 lastAttemptAt: store.state.lastAttemptAt,
@@ -104,9 +108,15 @@ export async function runLoop(options: LoopOptions): Promise<number> {
                 log.line(line);
                 announced = line;
             }
+            if (asked) {
+                log.line(decision.paused
+                    ? `「いま作れ」と頼まれたが、${decision.paused}`
+                    : "「いま作れ」と頼まれた。間隔を待たずに作り、出来たらその場で公開する");
+                announced = "";
+            }
             setPhase(decision.paused ? "paused" : "waiting", decision.next);
 
-            const due = !decision.paused && (options.once || resume || decision.next.getTime() <= now.getTime());
+            const due = !decision.paused && (options.once || resume || asked || decision.next.getTime() <= now.getTime());
             if (due) {
                 resume = false;
                 setPhase("making");
@@ -118,12 +128,15 @@ export async function runLoop(options: LoopOptions): Promise<number> {
 
             if (Date.now() >= nextPublishAt && unpublished().length) {
                 const since = store.state.lastPublishAt ? Date.parse(store.state.lastPublishAt) : 0;
-                if (options.once || Date.now() - since >= config.publish.everyHours * 3_600_000) {
+                if (options.once || asked || Date.now() - since >= config.publish.everyHours * 3_600_000) {
                     setPhase("publishing");
                     nextPublishAt = await publishOnce() ? 0 : Date.now() + PUBLISH_RETRY_MS;
                     announced = "";
                 }
             }
+            // 作り終え、送り終えたら、その場で「待っている」に戻す。次に目を覚ますまで
+            // 「作っている」ままに見えると、外から見届けている側が無駄に待つ。
+            if (phase === "making" || phase === "publishing") setPhase("waiting", decision.next);
             if (failures) {
                 notifier.clear("loop");
                 failures = 0;

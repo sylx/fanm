@@ -17,6 +17,7 @@
     "make:fake": "tsx packages/batch/src/cli.ts make --fake",
     "start": "npm run gallery:build && tsx packages/batch/src/cli.ts run",
     "start:fake": "npm run gallery:build && tsx packages/batch/src/cli.ts run --fake",
+    "makenow": "npm run gallery:build && tsx packages/batch/src/cli.ts makenow",
     "status": "tsx packages/batch/src/cli.ts status",
     "publish": "npm run gallery:build && tsx packages/batch/src/cli.ts publish",
     "publish:local": "npm run gallery:build && tsx packages/batch/src/cli.ts publish --local",

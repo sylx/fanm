@@ -44,11 +44,22 @@ export function logPath(varDir: string): string {
     return join(varDir, "run.log");
 }
 
+export interface FollowOptions {
+    /** どれだけさかのぼって見せるか。 */
+    readonly tailBytes?: number;
+    /** これが true を返したら、相手が生きていても見るのをやめる。 */
+    readonly until?: () => boolean;
+}
+
 /**
  * 動いているプロセスのログを追いかけて画面に流す。相手が終わるまで戻らない。
  * 今の続きからではなく、少し前から見せて、何をしているところか分かるようにする。
+ *
+ * 常駐は終わらないので、頼んだ制作だけを見届けたいときは until を渡す
+ * （「いま作れ」の様子を見る makenow がそうしている）。
  */
-export async function follow(varDir: string, tailBytes = 4000): Promise<void> {
+export async function follow(varDir: string, options: FollowOptions = {}): Promise<void> {
+    const { tailBytes = 4000, until } = options;
     const path = logPath(varDir);
     let offset = Math.max(0, (existsSync(path) ? statSync(path).size : 0) - tailBytes);
     const buffer = Buffer.alloc(64 * 1024);
@@ -67,6 +78,7 @@ export async function follow(varDir: string, tailBytes = 4000): Promise<void> {
             }
         }
         if (!isRunning(varDir)) return;
+        if (until?.()) return;
         await new Promise(done => setTimeout(done, 300));
     }
 }
