@@ -122,22 +122,40 @@ npm run makenow -- --fake      # 偽のAIで「いま作れ」を試す（偽の
 
 設定を永続ボリュームに置けるので、予算や頻度を変えるのにイメージを作り直さなくてよい。置かなければ既定値で動く（`packages/batch/src/config.ts` の `DEFAULTS`）。
 
-## AI事業者を変える
+## 頼む相手を変える・混ぜる
 
-`fanm.json` の `provider` を書き替えると、制作を頼む相手が変わる。APIキーを入れる環境変数は事業者ごとに決まっていて、設定には書かない。
+`fanm.json` の `providers` が**札束**で、ジョブのたびにここから一人引く。型（`plan/forms.ts`）や縛り（`plan/variations.ts`）と同じ引き方で、直近の作品で少ない相手が先に当たる。引くのはジョブの種なので、途中で落ちて再開しても相手は変わらない。誰が書いたかは作品の `meta.json`（`model`）に残り、ギャラリーのカードにも出る。
+
+APIキーを入れる環境変数は事業者ごとに決まっていて、設定には書かない。
 
 | 事業者 | `name` | `model` の例 | APIキーの環境変数 |
 | --- | --- | --- | --- |
 | DeepSeek | `deepseek` | `deepseek-v4-pro`、`deepseek-flash` | `DEEPSEEK_API_KEY` |
 | Claude | `claude` | `claude-opus-5`、`claude-opus-4-8`、`claude-sonnet-5` | `ANTHROPIC_API_KEY` |
 
+一人だけに頼むなら、札を一枚だけ書く。
+
 ```json
-{ "provider": { "name": "claude", "model": "claude-opus-5" } }
+{ "providers": [{ "name": "claude", "model": "claude-opus-5" }] }
 ```
 
-`apiKeyEnv` と `baseUrl` は書かなくてよい（書けば上書きできる）。単価は `packages/batch/src/providers/` の各ファイルが持っていて、載っていないモデル名は起動のときに弾かれる。
+混ぜるなら、札を並べて `share`（引かれやすさ）を書く。下は「六作に一作を Claude に頼む」。
 
-**予算は事業者と一緒に動かす。** 呼出しの前に最大想定費用を予約するので、一回ぶんの予約が `budget.perWorkUsd` を超えると、一度も呼ばないまま不採用になる。手元で測った生成一回の予約額（入力 6.8万字、出力上限 16000）:
+```json
+{
+  "providers": [
+    { "name": "deepseek", "model": "deepseek-v4-pro", "share": 5 },
+    { "name": "claude", "model": "claude-opus-5", "share": 1, "perWorkUsd": 2.5 }
+  ]
+}
+```
+
+- `share` を `0` にすると引かれない。札を消さずに休ませられる。
+- `perWorkUsd` はその相手に頼むときの一作品の上限。省くと `budget.perWorkUsd`。
+- `apiKeyEnv` と `baseUrl` は書かなくてよい（書けば上書きできる）。単価は `packages/batch/src/providers/` の各ファイルが持っていて、載っていないモデル名は起動のときに弾かれる。鍵も札束ぜんぶぶん、始める前に確かめる。
+- 札が一枚だけの古い書き方（`"provider": { … }`）も読む。
+
+**予算は札束と一緒に動かす。** 呼出しの前に最大想定費用を予約するので、一回ぶんの予約が上限を超えると、一度も呼ばないまま不採用になる。手元で測った生成一回の予約額:
 
 | モデル | 予約額 |
 | --- | --- |
@@ -145,7 +163,9 @@ npm run makenow -- --fake      # 偽のAIで「いま作れ」を試す（偽の
 | `claude-sonnet-5` | $0.25 |
 | `claude-opus-5` | $0.63 |
 
-既定の `perWorkUsd` は $0.5 なので、Claude にするならここを上げる（企画1回・生成1回・修正2回まで見るなら `claude-opus-5` で $2.5 ほど）。月額も同じだけ動く。実費は予約額より下がる。予約は入力を高めに見積もっていて、Claude では制作ルールとAPI資料（6万字、どの呼出しでも同じ）に入力キャッシュの印を付けているので、二回目からの読み出しは十分の一で数えられる。
+`claude-opus-5` を札束に入れるなら、その札に `perWorkUsd` を $2.5 ほど付ける（企画1回・生成1回・修正2回まで見た額）。全体の `budget.perWorkUsd` を上げてしまうと、安い相手の暴走まで許すことになる。月額（`budget.monthlyUsd`）は使い切らないように制作の間隔が自動で延びる（実測の一作品あたりの費用から決まる）ので、高い相手を混ぜると作る本数が減る。
+
+実費は予約額より下がる。予約は入力を高めに見積もっていて、Claude では制作ルールとAPI資料（6万字、どの呼出しでも同じ）に入力キャッシュの印を付けているので、二回目からの読み出しは十分の一で数えられる。
 
 ## コンテナ
 

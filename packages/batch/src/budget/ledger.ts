@@ -92,6 +92,14 @@ export class Ledger {
         return recent.length ? recent.reduce((n, usd) => n + usd, 0) / recent.length : undefined;
     }
 
+    /**
+     * 一作品の上限だけを変えた同じ台帳。相手によって単価が10倍違うので、
+     * 一作品にいくらまで許すかも相手ごとに変える（providers/deck.ts の perWorkUsd）。
+     */
+    withPerWork(perWorkUsd: number): Ledger {
+        return new Ledger(this.dir, { ...this.limits, perWorkUsd });
+    }
+
     /** 上限を超えるなら BudgetExceeded を投げ、呼出しをさせない。 */
     reserve(jobId: string, purpose: string, maxUsd: number): Entry {
         const entries = this.read();

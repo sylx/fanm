@@ -116,6 +116,20 @@ export class Archive {
         return out;
     }
 
+    /**
+     * 採用作を書いたモデル。新しい順。頼む相手の偏りを避けるために使う。
+     * モデル名を記録する前の作品は数えない（誰が書いたか分からないため）。
+     */
+    models(limit = 20): string[] {
+        return readdirSync(this.dir)
+            .sort()
+            .reverse()
+            .filter(id => existsSync(join(this.dir, id, "public", "meta.json")))
+            .slice(0, limit)
+            .map(id => this.meta(id).model)
+            .filter((model): model is string => !!model);
+    }
+
     /** 採用済み作品の企画。新しい順。企画の偏りを避けるために使う。 */
     plans(limit = 40): Plan[] {
         return readdirSync(this.dir)

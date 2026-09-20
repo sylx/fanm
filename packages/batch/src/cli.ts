@@ -29,8 +29,7 @@ import { JobStore } from "./jobs/job.js";
 import { make } from "./jobs/make.js";
 import { FORMS, formOf } from "./plan/forms.js";
 import { template } from "./prompts.js";
-import { Claude, CLAUDE_API_KEY_ENV } from "./providers/claude.js";
-import { DeepSeek, DEEPSEEK_API_KEY_ENV } from "./providers/deepseek.js";
+import { deckBrief, FAKE_DECK, verifyDeck } from "./providers/deck.js";
 import { CloudflarePublisher, PublishError, type Publisher } from "./publish/publisher.js";
 import { assemble } from "./publish/site.js";
 import { acquire, isRunning } from "./run/lock.js";
@@ -39,8 +38,7 @@ import { askNow, asked, takeRequest } from "./run/request.js";
 import { readState } from "./run/state.js";
 import { status } from "./run/status.js";
 import { follow, Log, logPath } from "./run/log.js";
-import { FakeProvider } from "./providers/fake.js";
-import { ProviderError, type Provider } from "./providers/provider.js";
+import { ProviderError } from "./providers/provider.js";
 
 /** 台帳の生の中身。内訳を見せるためだけに読む。 */
 function readLedger(varDir: string): { status: string; usd?: number; maxUsd: number }[] {
@@ -50,18 +48,13 @@ function readLedger(varDir: string): { status: string; usd?: number; maxUsd: num
 
 const config = loadConfig();
 const [command, ...args] = process.argv.slice(2);
-const fake = args.includes("--fake") || config.provider.name === "fake";
+// 札束が偽のAIだけなら、--fake と同じ扱い（台帳も作品庫も <VAR>/fake/ に分ける）。
+const fake = args.includes("--fake") || config.providers.every(p => p.name === "fake");
 const root = fake ? join(VAR, "fake") : VAR;
 const ledger = () => new Ledger(join(root, "ledger"), config.budget);
 
-function provider(): Provider {
-    if (fake) return new FakeProvider();
-    const { name, model, apiKeyEnv, baseUrl } = config.provider;
-    const env = apiKeyEnv ?? (name === "claude" ? CLAUDE_API_KEY_ENV : DEEPSEEK_API_KEY_ENV);
-    const key = process.env[env];
-    if (!key) throw new Error(`環境変数 ${env} に APIキーがない`);
-    return name === "claude" ? new Claude(model, key, baseUrl) : new DeepSeek(model, key, baseUrl);
-}
+/** 頼む相手の札束。--fake のときだけ、設定を無視して偽のAI一人にする。 */
+const deck = args.includes("--fake") ? FAKE_DECK : config.providers;
 
 async function runMake(): Promise<number> {
     mkdirSync(root, { recursive: true });
@@ -79,6 +72,7 @@ async function runMake(): Promise<number> {
     const swept = budget.sweepReserved();
     if (swept) log.line(`前回の中断で予約のまま残っていた ${swept} 件を、予約額のまま確定した`);
 
+    verifyDeck(deck);
     const jobs = new JobStore(join(root, "jobs"));
     const job = jobs.unfinished()[0] ?? jobs.create();
     // 手元で一つの型を試すための指定。企画が済んでいないジョブにだけ効く。
@@ -93,9 +87,9 @@ async function runMake(): Promise<number> {
             log.line(`型を ${wanted} に指定した`);
         }
     }
-    log.line(`${job.id}: ${job.state} から開始${fake ? "（偽のAI）" : ""}`);
+    log.line(`${job.id}: ${job.state} から開始${fake ? "（偽のAI）" : `（札束は ${deckBrief(deck)}）`}`);
     try {
-        const done = await make({ config, provider: provider(), ledger: budget, jobs, archive: new Archive(join(root, "works")), log }, job);
+        const done = await make({ config, deck, ledger: budget, jobs, archive: new Archive(join(root, "works")), log }, job);
         const usd = done.calls.reduce((n, c) => n + c.usd, 0);
         log.line(`${done.id}: ${done.state}（AI 呼出し ${done.calls.length} 回、$${usd.toFixed(4)}）`);
         return done.state === "accepted" ? 0 : 1;
@@ -156,7 +150,7 @@ async function runMakeNow(local: boolean): Promise<number> {
         takeRequest(root);
         console.log("頼みを受け取る常駐がいなかった。ここで作る。");
     }
-    return await runLoop({ config, root, fake, provider: provider(), publisher: publisher(local), once: true });
+    return await runLoop({ config, root, fake, deck, publisher: publisher(local), once: true });
 }
 
 async function runCheck(dir: string): Promise<number> {
@@ -238,7 +232,7 @@ switch (command) {
             config,
             root,
             fake,
-            provider: provider(),
+            deck,
             publisher: publisher(args.includes("--local")),
             once: args.includes("--once")
         });

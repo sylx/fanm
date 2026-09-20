@@ -14,10 +14,11 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { Archive } from "../archive/archive.js";
 import { BudgetExceeded, Ledger } from "../budget/ledger.js";
-import type { Config } from "../config.js";
+import type { Config, ProviderConfig } from "../config.js";
 import { JobStore } from "../jobs/job.js";
 import { make } from "../jobs/make.js";
-import { ProviderError, type Provider } from "../providers/provider.js";
+import { deckBrief, verifyDeck } from "../providers/deck.js";
+import { ProviderError } from "../providers/provider.js";
 import { PublishError, type Publisher } from "../publish/publisher.js";
 import { assemble } from "../publish/site.js";
 import { decide, UNKNOWN_COST_RATIO } from "../scheduler/scheduler.js";
@@ -41,7 +42,8 @@ export interface LoopOptions {
     /** 制作状態の置き場所。偽のAIなら <VAR>/fake/。 */
     readonly root: string;
     readonly fake: boolean;
-    readonly provider: Provider;
+    /** 頼む相手の札束。ジョブごとに一人引く（providers/deck.ts）。 */
+    readonly deck: readonly ProviderConfig[];
     /** 送り先。undefined なら <VAR>/site/ を組み立てるだけで、どこへも送らない。 */
     readonly publisher?: Publisher;
     /** 一作品だけ作って終わる（動作確認用）。 */
@@ -68,7 +70,8 @@ export async function runLoop(options: LoopOptions): Promise<number> {
 
     const swept = ledger.sweepReserved();
     if (swept) log.line(`前回の中断で予約のまま残っていた ${swept} 件を、予約額のまま確定した`);
-    log.line(`常駐を始める（${options.fake ? "偽のAI、" : `${options.provider.name} ${options.provider.model}、`}状態は ${root}）`);
+    verifyDeck(options.deck);
+    log.line(`常駐を始める（${options.fake ? "偽のAI" : `札束は ${deckBrief(options.deck)}`}、状態は ${root}）`);
 
     // 生きている目印は、制作の途中でも書き続ける。一作品つくるのに数分かかるので、
     // 輪が一周するのを待っていると、動いていても止まって見える。
@@ -168,7 +171,7 @@ export async function runLoop(options: LoopOptions): Promise<number> {
         const job = jobs.unfinished()[0] ?? jobs.create();
         log.line(`${job.id}: ${job.state} から開始${options.fake ? "（偽のAI）" : ""}`);
         try {
-            const done = await make({ config, provider: options.provider, ledger, jobs, archive, log }, job);
+            const done = await make({ config, deck: options.deck, ledger, jobs, archive, log }, job);
             const usd = done.calls.reduce((n, c) => n + c.usd, 0);
             log.line(`${done.id}: ${done.state}（AI 呼出し ${done.calls.length} 回、$${usd.toFixed(4)}）`);
             notifier.clear("provider");

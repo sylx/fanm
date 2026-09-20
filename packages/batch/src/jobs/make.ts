@@ -11,24 +11,31 @@ import { createRandom } from "@fanm/work";
 import type { Archive } from "../archive/archive.js";
 import { BudgetExceeded, type Ledger } from "../budget/ledger.js";
 import { checkWork, type CheckReport } from "../check/check.js";
-import type { Config } from "../config.js";
+import type { Config, ProviderConfig } from "../config.js";
 import { FormatError, generateRequest, parseFiles, type PastAttempt } from "../generate/generator.js";
 import { formOf, pickForm } from "../plan/forms.js";
 import { parsePlan, planRequest } from "../plan/planner.js";
 import { drawTwist } from "../plan/variations.js";
 import { template } from "../prompts.js";
 import { call } from "../providers/call.js";
+import { createProvider, drawProvider } from "../providers/deck.js";
 import type { OnDelta, Provider } from "../providers/provider.js";
 import type { Log } from "../run/log.js";
 import type { Job, JobStore } from "./job.js";
 
 export interface MakeContext {
     readonly config: Config;
-    readonly provider: Provider;
+    /** 頼む相手の札束。ジョブごとにここから一人引く。 */
+    readonly deck: readonly ProviderConfig[];
     readonly ledger: Ledger;
     readonly jobs: JobStore;
     readonly archive: Archive;
     readonly log: Log;
+}
+
+/** 相手が決まったあとの場。この先は一人の相手と、その相手の予算枠で進む。 */
+interface Making extends MakeContext {
+    readonly provider: Provider;
 }
 
 /** 思考と本文を、届いた端からログへ流す。待っている人に何をしているか見せるため。 */
@@ -43,7 +50,25 @@ function deltas(log: Log): OnDelta {
     };
 }
 
-export async function make(ctx: MakeContext, job: Job): Promise<Job> {
+/**
+ * 今回頼む相手。型や縛りと同じく、企画の前に引いてジョブに残す。落ちて再開しても
+ * 同じ相手になる。札束から消えた相手が残っていたら引き直す（設定を変えたとき）。
+ */
+function draw(ctx: MakeContext, job: Job): ProviderConfig {
+    const kept = ctx.deck.find(e => e.model === job.model);
+    if (kept) return kept;
+    const entry = drawProvider(ctx.deck, ctx.archive.models(), createRandom(job.seed ^ 0xdec4));
+    job.model = entry.model;
+    ctx.jobs.save(job);
+    ctx.log.line(`${job.id}: 頼む相手は ${entry.name} の ${entry.model}`);
+    return entry;
+}
+
+export async function make(base: MakeContext, job: Job): Promise<Job> {
+    const entry = draw(base, job);
+    // 一作品にいくらまで使うかは相手ごとに変えられる。単価が違う相手を同じ枠では測れない。
+    const ledger = entry.perWorkUsd === undefined ? base.ledger : base.ledger.withPerWork(entry.perWorkUsd);
+    const ctx: Making = { ...base, ledger, provider: createProvider(entry) };
     try {
         while (job.state !== "accepted" && job.state !== "rejected") {
             if (job.state === "planning") await plan(ctx, job);
@@ -62,7 +87,7 @@ export async function make(ctx: MakeContext, job: Job): Promise<Job> {
     return job;
 }
 
-async function plan(ctx: MakeContext, job: Job): Promise<void> {
+async function plan(ctx: Making, job: Job): Promise<void> {
     const past = ctx.archive.plans();
     // 型はAIに選ばせない。過去作に少ない型を当てる。同じジョブなら毎回同じ型。
     const form = job.form ? formOf(job.form) : pickForm(past, createRandom(job.seed));
@@ -90,7 +115,7 @@ async function plan(ctx: MakeContext, job: Job): Promise<void> {
  * 検査を終えた試行を、修正の会話に渡す形で読み出す。応答が空のものは飛ばす。
  * 空の発言を会話に混ぜても、AIには直しようがないため。
  */
-function pastAttempts(ctx: MakeContext, job: Job): PastAttempt[] {
+function pastAttempts(ctx: Making, job: Job): PastAttempt[] {
     return job.attempts.filter(a => a.result).map(a => {
         const dir = ctx.jobs.attemptDir(job, a.n);
         const reportPath = join(dir, "report.json");
@@ -104,7 +129,7 @@ function pastAttempts(ctx: MakeContext, job: Job): PastAttempt[] {
     }).filter(a => a.response.trim());
 }
 
-async function generate(ctx: MakeContext, job: Job): Promise<void> {
+async function generate(ctx: Making, job: Job): Promise<void> {
     const n = job.attempts.length + 1;
     const { generation } = ctx.config;
     // 前回、思考だけで出力上限に達していたら、思考を切って頼み直す。
@@ -142,7 +167,7 @@ async function generate(ctx: MakeContext, job: Job): Promise<void> {
     }
 }
 
-async function check(ctx: MakeContext, job: Job): Promise<void> {
+async function check(ctx: Making, job: Job): Promise<void> {
     const attempt = job.attempts[job.attempts.length - 1];
     const dir = ctx.jobs.attemptDir(job, attempt.n);
     // 実例と、同じ型の過去作を見比べる相手に渡す。名前だけ変えた写しを採用しない。
@@ -163,7 +188,7 @@ async function check(ctx: MakeContext, job: Job): Promise<void> {
     }
 }
 
-function finishAttempt(ctx: MakeContext, job: Job, result: NonNullable<Job["attempts"][number]["result"]>): void {
+function finishAttempt(ctx: Making, job: Job, result: NonNullable<Job["attempts"][number]["result"]>): void {
     const attempt = job.attempts[job.attempts.length - 1];
     attempt.result = result;
     if (result.ok) return;
@@ -175,7 +200,7 @@ function finishAttempt(ctx: MakeContext, job: Job, result: NonNullable<Job["atte
     }
 }
 
-function reject(ctx: MakeContext, job: Job, reason: string): void {
+function reject(ctx: Making, job: Job, reason: string): void {
     job.state = "rejected";
     job.rejectReason = reason;
     ctx.log.line(`${job.id}: 不採用 — ${reason}`);

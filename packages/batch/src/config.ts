@@ -10,15 +10,23 @@ import { DEFAULT_MAX_OVERLAP } from "./check/overlap.js";
 // 本番（Coolify）では環境変数が直接入るので .env は置かない。すでに環境にある値が優先。
 if (existsSync(".env")) process.loadEnvFile(".env");
 
+/** 頼む相手ひとり。札束の一枚（providers/deck.ts）。 */
+export interface ProviderConfig {
+    readonly name: "deepseek" | "claude" | "fake";
+    readonly model: string;
+    /** 引かれやすさ。大きいほどよく当たる。0 なら引かない（札束に残したまま休ませる）。省くと 1。 */
+    readonly share?: number;
+    /** この相手に頼むときの一作品の上限（USD）。省くと budget.perWorkUsd。単価が10倍違う相手を同じ枠では測れない。 */
+    readonly perWorkUsd?: number;
+    /** APIキーの環境変数。省くと事業者ごとの既定（providers/ の各 API_KEY_ENV）。 */
+    readonly apiKeyEnv?: string;
+    /** 接続先。省くと事業者ごとの既定。 */
+    readonly baseUrl?: string;
+}
+
 export interface Config {
-    readonly provider: {
-        readonly name: "deepseek" | "claude" | "fake";
-        readonly model: string;
-        /** APIキーの環境変数。省くと事業者ごとの既定（providers/ の各 API_KEY_ENV）。 */
-        readonly apiKeyEnv?: string;
-        /** 接続先。省くと事業者ごとの既定。 */
-        readonly baseUrl?: string;
-    };
+    /** 頼む相手の札束。ジョブのたびに一人引く（providers/deck.ts）。 */
+    readonly providers: readonly ProviderConfig[];
     readonly budget: {
         /** 月間上限（USD）。予約分も含めてこれを超える呼出しはしない。 */
         readonly monthlyUsd: number;
@@ -55,9 +63,9 @@ export interface Config {
 }
 
 export const DEFAULTS: Config = {
-    // 事業者を変えるときは config/fanm.json で name と model を入れ替える。鍵の
-    // 環境変数と接続先は既定に任せる（残しておくと、前の事業者のものを引き継いでしまう）。
-    provider: { name: "deepseek", model: "deepseek-v4-pro" },
+    // 相手を変える・増やすときは config/fanm.json の providers を書き替える。鍵の
+    // 環境変数と接続先は既定に任せる（書くと、相手を替えたときに前のものが残る）。
+    providers: [{ name: "deepseek", model: "deepseek-v4-pro" }],
     budget: { monthlyUsd: 12, perWorkUsd: 0.5 },
     // maxTokens は思考の分も含む。DeepSeek V4 Pro は reasoning_effort: low でも
     // 上限まで考え切って本文を返さないことがあった（実測で2回続けて空）。
@@ -79,15 +87,24 @@ export const DEFAULTS: Config = {
 
 type Partial2<T> = { [K in keyof T]?: Partial<T[K]> };
 
+/** 設定ファイルの中身。節ごとに一部だけ書ける。札束だけは配列なので丸ごと差し替える。 */
+type UserConfig = Partial2<Omit<Config, "providers">> & {
+    providers?: readonly ProviderConfig[];
+    /** 相手が一人しかいなかったころの書き方。まだ読む。 */
+    provider?: ProviderConfig;
+};
+
 /**
  * 設定を読む。本番では永続ボリュームの上（FANM_CONFIG=/data/fanm.json）に置くと、
  * イメージを作り直さずに頻度や予算を変えられる。無ければ既定値。
  */
 export function loadConfig(path = process.env.FANM_CONFIG ?? "config/fanm.json"): Config {
     if (!existsSync(path)) return DEFAULTS;
-    const user = JSON.parse(readFileSync(path, "utf8")) as Partial2<Config>;
+    const user = JSON.parse(readFileSync(path, "utf8")) as UserConfig;
+    const providers = user.providers ?? (user.provider ? [user.provider] : DEFAULTS.providers);
+    if (!providers.length) throw new Error(`${path}: providers が空。頼む相手を一人は書く`);
     return {
-        provider: { ...DEFAULTS.provider, ...user.provider },
+        providers,
         budget: { ...DEFAULTS.budget, ...user.budget },
         generation: { ...DEFAULTS.generation, ...user.generation },
         production: { ...DEFAULTS.production, ...user.production },

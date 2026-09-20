@@ -42,8 +42,10 @@ function templateInPrompt(prompt: string): { work: string; meta: string } {
 
 export class FakeProvider implements Provider {
     readonly name = "fake";
-    readonly model = "fake";
     private generations = 0;
+
+    /** 名前は札束の札のまま名乗る。偽物を何枚か並べて、引き方を試せるように。 */
+    constructor(readonly model = "fake") {}
 
     estimateMaxUsd(): number {
         return 0.01;

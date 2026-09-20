@@ -119,7 +119,7 @@ npm run publish:local               # 組み立てるところまで（送らな
 
 | 部分 | できていること | まだないもの |
 | --- | --- | --- |
-| バッチ | `fanm make`：企画 → 生成 → 検査 → 修正（最大2回）→ 採用/不採用 を一つのジョブとして回す。ジョブ状態と予算台帳を保存し、途中から再開できる。DeepSeek と Claude の接続、APIキーなしで試す偽のAI（`--fake`）。検査は静的検査・書き写しの検査・型検査・隔離実行・撮影・画面の数値判定。企画には型のほかに縛り（`plan/variations.ts`）を引いて渡し、実例はデータを抜いて渡す。`fanm run`：残予算と実費から頻度を決めて回し続け、頃合いを見て公開し、直らない問題だけ知らせる。`fanm status` と Dockerfile／docker-compose.yaml（[docs/operate.md](operate.md)） | 不採用作の掃除、ブラウザでの確認、Coolify への初回デプロイ |
+| バッチ | `fanm make`：企画 → 生成 → 検査 → 修正（最大2回）→ 採用/不採用 を一つのジョブとして回す。ジョブ状態と予算台帳を保存し、途中から再開できる。DeepSeek と Claude の接続、APIキーなしで試す偽のAI（`--fake`）。頼む相手はジョブごとに札束（`providers/deck.ts`）から引く。検査は静的検査・書き写しの検査・型検査・隔離実行・撮影・画面の数値判定。企画には型のほかに縛り（`plan/variations.ts`）を引いて渡し、実例はデータを抜いて渡す。`fanm run`：残予算と実費から頻度を決めて回し続け、頃合いを見て公開し、直らない問題だけ知らせる。`fanm status` と Dockerfile／docker-compose.yaml（[docs/operate.md](operate.md)） | 不採用作の掃除、ブラウザでの確認、Coolify への初回デプロイ |
 | ギャラリー | サムネイルの一覧、作品ごとのURL（`#<id>`）、ランダム再生、iframe の中での動的読込。開発時は未ビルドの手元の作品も再生できる | 連続再生、お気に入り |
 | つなぎ | `fanm publish` が `<VAR>/site/` に公開物を組み立て、Cloudflare Workers（`fanm.oyabanare.com`）へ送る。作品とエンジンは増えた分だけビルドし、送るのも増えた分だけ。常駐はこれを既定6時間おきに、送っていない作品があるときだけ呼ぶ | 公開頻度の実測に基づく調整 |
 

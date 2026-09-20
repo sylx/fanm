@@ -29,6 +29,8 @@ export interface Job {
     readonly seed: number;
     /** 作品の型。企画の前に決まり、やり直しても変わらない。 */
     form?: string;
+    /** 頼む相手のモデル名。型と同じく企画の前に引き、やり直しても変わらない。 */
+    model?: string;
     plan?: Plan;
     attempts: Attempt[];
     calls: CallLog[];
