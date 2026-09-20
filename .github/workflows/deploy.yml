@@ -20,6 +20,12 @@ name: deploy
 on:
   push:
     branches: [main]
+    # 配り直すと常駐が入れ替わり、作っている途中なら呼出しが一つ無駄になる。
+    # イメージの中身が変わらないもの（読み物）では配らない。prompts/ と
+    # templates/ は .md でもAIへ渡すものなので、ここには入れない。
+    paths-ignore:
+      - 'docs/**'
+      - 'README.md'
   workflow_dispatch:
 
 # 続けて push したときは、最後のものだけ配れば足りる。

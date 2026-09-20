@@ -153,6 +153,8 @@ GitHub から Coolify の webhook を直接叩かせることもできるが、�
 
 コミットの文に `[skip ci]` か `[skip cd]` が入っていれば、Coolify は配り直さない（Actions は成功のまま）。配り直しを自分で始めたいときは Actions の `deploy` を workflow_dispatch で回すか、Coolify の Redeploy を押す。
 
+`docs/` と `README.md` だけの push では配り直さない。配り直すと常駐が入れ替わり、作っている途中なら呼出しが一つ無駄になる。`prompts/` と `templates/` はAIへ渡すものなので、読み物に見えても配る。
+
 秘密を入れる前に置いたときや、ワークフローを足した当の push では走らないことがある（実際に走らなかった）。最初の一回は手動で回す。
 
 ```bash
