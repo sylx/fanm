@@ -134,7 +134,24 @@ fanM も fantasy-msx も公開リポジトリなので、Coolify の **Public Re
 5. **手元の作品を引き継ぐなら、ここで一度 Stop して「[手元の作品を持っていく](#手元の作品を持っていく)」を済ませる。** 空のまま回すと、最初の公開で今出ている作品が消える。
 6. **様子を見る。** ログに `常駐を始める` と `次の制作は …` が出れば回り始めている。数時間後に `fanm.oyabanare.com` に作品が増える。
 
-Public Repository は push で自動デプロイしない（それが要るなら GitHub App 経由に変える）。コードを直したら Coolify の Redeploy を押す。再デプロイしてもボリュームは残るので、使用額も作品も引き継がれる。
+再デプロイしてもボリュームは残るので、使用額も作品も引き継がれる。
+
+### push したら配り直す
+
+`main` への push で配り直すのは GitHub Actions（[.github/workflows/deploy.yml](../.github/workflows/deploy.yml)）。型検査を通してから、Coolify の manual GitHub webhook を叩く。
+
+GitHub から Coolify の webhook を直接叩かせることもできるが、それだと型の壊れた版も配られる。tsx は型を見ずに動かすので、壊れていてもイメージはできてしまう。止められるのはここだけ。
+
+必要な秘密は二つ（Settings → Secrets and variables → Actions）。
+
+| 名前 | 中身 |
+| --- | --- |
+| `COOLIFY_WEBHOOK_URL` | `http://<chevron>:8000/webhooks/source/github/events/manual` |
+| `COOLIFY_WEBHOOK_SECRET` | Coolify のアプリ（fanM Batch）の Webhooks タブにあるもの |
+
+秘密は本文ではなく署名に使う（本文の HMAC-SHA256 を `X-Hub-Signature-256` に載せる）。本文は push イベントを名乗る最小限のもので、Coolify が見るのはリポジトリ名と枝、それと `commits`。`commits` を省くと Coolify は 500 を返す。
+
+コミットの文に `[skip ci]` か `[skip cd]` が入っていれば、Coolify は配り直さない（Actions は成功のまま）。配り直しを自分で始めたいときは Actions の `deploy` を workflow_dispatch で回すか、Coolify の Redeploy を押す。
 
 ## 手元の作品を持っていく
 
