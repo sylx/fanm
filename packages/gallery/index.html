@@ -3,15 +3,18 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>fanM</title>
+  <title>fanM - AIが無限にMSX2風のデモを作り続けるサイト</title>
+  <link rel="icon" type="image/png" href="./assets/favicon.png">
   <style>
     :root { color-scheme: dark; --bg: #0b0b10; --fg: #e8e6f0; --dim: #8d89a5; --line: #23222e; }
     * { box-sizing: border-box; }
     body { margin: 0; padding: 0 16px 48px; background: var(--bg); color: var(--fg);
            font: 15px/1.6 system-ui, sans-serif; }
-    header { display: flex; align-items: baseline; gap: 16px; max-width: 1100px;
+    header { display: flex; align-items: center; gap: 16px; max-width: 1100px;
              margin: 0 auto; padding: 24px 0 16px; }
-    h1 { font-size: 20px; letter-spacing: .3em; margin: 0; }
+    h1 { margin: 0; line-height: 0; }
+    /* 題字はロゴの絵そのもの。高さだけ決めて、幅は絵の比に任せる。 */
+    h1 img { height: 34px; width: auto; display: block; }
     header p { color: var(--dim); margin: 0; font-size: 13px; }
     a { color: inherit; }
     main { max-width: 1100px; margin: 0 auto; }
@@ -45,7 +48,11 @@
 </head>
 <body>
   <header>
-    <h1>fanM</h1>
+    <h1>
+      <a href="./">
+        <img src="./assets/logo_full-128.png" alt="fanM" width="88" height="34">
+      </a>
+    </h1>
     <p>AIがつくり続けるMSX2風のデモ</p>
     <p><a id="random" href="#" hidden>ランダム再生</a></p>
   </header>
