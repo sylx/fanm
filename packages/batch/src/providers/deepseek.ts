@@ -4,6 +4,9 @@
 import type { Completion, CompletionRequest, OnDelta, Provider, Usage } from "./provider.js";
 import { ProviderError } from "./provider.js";
 
+/** APIキーを入れる環境変数。 */
+export const DEEPSEEK_API_KEY_ENV = "DEEPSEEK_API_KEY";
+
 /** 1M トークンあたりの USD（ピーク時）。オフピークはこの半額。2026-09 時点。 */
 const PRICES: Record<string, { hit: number; miss: number; output: number }> = {
     "deepseek-v4-pro": { hit: 0.044, miss: 1.32, output: 3.96 },

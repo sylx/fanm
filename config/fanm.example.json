@@ -1,9 +1,7 @@
 {
   "provider": {
     "name": "deepseek",
-    "model": "deepseek-v4-pro",
-    "apiKeyEnv": "DEEPSEEK_API_KEY",
-    "baseUrl": "https://api.deepseek.com"
+    "model": "deepseek-v4-pro"
   },
   "budget": {
     "monthlyUsd": 12,

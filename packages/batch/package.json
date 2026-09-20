@@ -8,6 +8,7 @@
     "fanm": "./src/cli.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.127.0",
     "@fanm/work": "*"
   },
   "devDependencies": {

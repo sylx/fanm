@@ -12,10 +12,12 @@ if (existsSync(".env")) process.loadEnvFile(".env");
 
 export interface Config {
     readonly provider: {
-        readonly name: "deepseek" | "fake";
+        readonly name: "deepseek" | "claude" | "fake";
         readonly model: string;
-        readonly apiKeyEnv: string;
-        readonly baseUrl: string;
+        /** APIキーの環境変数。省くと事業者ごとの既定（providers/ の各 API_KEY_ENV）。 */
+        readonly apiKeyEnv?: string;
+        /** 接続先。省くと事業者ごとの既定。 */
+        readonly baseUrl?: string;
     };
     readonly budget: {
         /** 月間上限（USD）。予約分も含めてこれを超える呼出しはしない。 */
@@ -53,12 +55,9 @@ export interface Config {
 }
 
 export const DEFAULTS: Config = {
-    provider: {
-        name: "deepseek",
-        model: "deepseek-v4-pro",
-        apiKeyEnv: "DEEPSEEK_API_KEY",
-        baseUrl: "https://api.deepseek.com"
-    },
+    // 事業者を変えるときは config/fanm.json で name と model を入れ替える。鍵の
+    // 環境変数と接続先は既定に任せる（残しておくと、前の事業者のものを引き継いでしまう）。
+    provider: { name: "deepseek", model: "deepseek-v4-pro" },
     budget: { monthlyUsd: 12, perWorkUsd: 0.5 },
     // maxTokens は思考の分も含む。DeepSeek V4 Pro は reasoning_effort: low でも
     // 上限まで考え切って本文を返さないことがあった（実測で2回続けて空）。

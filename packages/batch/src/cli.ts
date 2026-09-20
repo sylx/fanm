@@ -29,7 +29,8 @@ import { JobStore } from "./jobs/job.js";
 import { make } from "./jobs/make.js";
 import { FORMS, formOf } from "./plan/forms.js";
 import { template } from "./prompts.js";
-import { DeepSeek } from "./providers/deepseek.js";
+import { Claude, CLAUDE_API_KEY_ENV } from "./providers/claude.js";
+import { DeepSeek, DEEPSEEK_API_KEY_ENV } from "./providers/deepseek.js";
 import { CloudflarePublisher, PublishError, type Publisher } from "./publish/publisher.js";
 import { assemble } from "./publish/site.js";
 import { acquire, isRunning } from "./run/lock.js";
@@ -55,9 +56,11 @@ const ledger = () => new Ledger(join(root, "ledger"), config.budget);
 
 function provider(): Provider {
     if (fake) return new FakeProvider();
-    const key = process.env[config.provider.apiKeyEnv];
-    if (!key) throw new Error(`環境変数 ${config.provider.apiKeyEnv} に APIキーがない`);
-    return new DeepSeek(config.provider.model, key, config.provider.baseUrl);
+    const { name, model, apiKeyEnv, baseUrl } = config.provider;
+    const env = apiKeyEnv ?? (name === "claude" ? CLAUDE_API_KEY_ENV : DEEPSEEK_API_KEY_ENV);
+    const key = process.env[env];
+    if (!key) throw new Error(`環境変数 ${env} に APIキーがない`);
+    return name === "claude" ? new Claude(model, key, baseUrl) : new DeepSeek(model, key, baseUrl);
 }
 
 async function runMake(): Promise<number> {

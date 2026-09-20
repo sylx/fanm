@@ -122,6 +122,31 @@ npm run makenow -- --fake      # 偽のAIで「いま作れ」を試す（偽の
 
 設定を永続ボリュームに置けるので、予算や頻度を変えるのにイメージを作り直さなくてよい。置かなければ既定値で動く（`packages/batch/src/config.ts` の `DEFAULTS`）。
 
+## AI事業者を変える
+
+`fanm.json` の `provider` を書き替えると、制作を頼む相手が変わる。APIキーを入れる環境変数は事業者ごとに決まっていて、設定には書かない。
+
+| 事業者 | `name` | `model` の例 | APIキーの環境変数 |
+| --- | --- | --- | --- |
+| DeepSeek | `deepseek` | `deepseek-v4-pro`、`deepseek-flash` | `DEEPSEEK_API_KEY` |
+| Claude | `claude` | `claude-opus-5`、`claude-opus-4-8`、`claude-sonnet-5` | `ANTHROPIC_API_KEY` |
+
+```json
+{ "provider": { "name": "claude", "model": "claude-opus-5" } }
+```
+
+`apiKeyEnv` と `baseUrl` は書かなくてよい（書けば上書きできる）。単価は `packages/batch/src/providers/` の各ファイルが持っていて、載っていないモデル名は起動のときに弾かれる。
+
+**予算は事業者と一緒に動かす。** 呼出しの前に最大想定費用を予約するので、一回ぶんの予約が `budget.perWorkUsd` を超えると、一度も呼ばないまま不採用になる。手元で測った生成一回の予約額（入力 6.8万字、出力上限 16000）:
+
+| モデル | 予約額 |
+| --- | --- |
+| `deepseek-v4-pro` | $0.12 |
+| `claude-sonnet-5` | $0.25 |
+| `claude-opus-5` | $0.63 |
+
+既定の `perWorkUsd` は $0.5 なので、Claude にするならここを上げる（企画1回・生成1回・修正2回まで見るなら `claude-opus-5` で $2.5 ほど）。月額も同じだけ動く。実費は予約額より下がる。予約は入力を高めに見積もっていて、Claude では制作ルールとAPI資料（6万字、どの呼出しでも同じ）に入力キャッシュの印を付けているので、二回目からの読み出しは十分の一で数えられる。
+
 ## コンテナ
 
 ```bash
@@ -156,7 +181,7 @@ fanM も fantasy-msx も公開リポジトリなので、Coolify の **Public Re
 
     | 名前 | 中身 |
     | --- | --- |
-    | `DEEPSEEK_API_KEY` | AIのAPIキー。無いと起動しない |
+    | `DEEPSEEK_API_KEY` | AIのAPIキー。無いと起動しない（Claude に替えたなら代わりに `ANTHROPIC_API_KEY`） |
     | `CLOUDFLARE_API_TOKEN` | 公開用（[docs/deploy.md](deploy.md)） |
     | `CLOUDFLARE_ACCOUNT_ID` | 同上 |
     | `FANM_NOTIFY_WEBHOOK` | 知らせ先。無くてもよい |

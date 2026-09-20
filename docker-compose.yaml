@@ -13,8 +13,9 @@ services:
       # 制作状態と設定の置き場所。どちらも永続ボリュームの中。
       - FANM_VAR=/data
       - FANM_CONFIG=/data/fanm.json
-      # AIのAPIキー。無いと起動しない。
-      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      # AIのAPIキー。設定した事業者のものが無いと起動しない。
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       # 公開先（Cloudflare Workers）。
       - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN}
       - CLOUDFLARE_ACCOUNT_ID=${CLOUDFLARE_ACCOUNT_ID}
