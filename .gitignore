@@ -8,3 +8,6 @@ dist/
 # 認証情報を含む実設定
 /config/fanm.json
 .env
+
+# wrangler の作業ファイル
+/.wrangler/

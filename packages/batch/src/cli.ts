@@ -7,7 +7,8 @@
 //
 // 制作は一度に一つだけ。すでに動いていれば、make はその様子を映すだけにする。
 //     fanm run                  （未実装）スケジューラーを起動して制作を回し続ける
-//     fanm publish              採用作から公開物を組み立てる（<VAR>/site/）
+//     fanm publish [--local]    採用作から公開物を組み立て（<VAR>/site/）、Cloudflare へ送る
+//                               --local は組み立てるところまで。偽のAIの作品も送らない
 //
 // --fake は APIキーなしで一周させる偽のAIを使う。予算台帳も別（<VAR>/fake/）。
 
@@ -20,6 +21,7 @@ import { loadConfig, VAR } from "./config.js";
 import { JobStore } from "./jobs/job.js";
 import { make } from "./jobs/make.js";
 import { DeepSeek } from "./providers/deepseek.js";
+import { CloudflarePublisher, PublishError, type Publisher } from "./publish/publisher.js";
 import { assemble } from "./publish/site.js";
 import { acquire } from "./run/lock.js";
 import { follow, Log, logPath } from "./run/log.js";
@@ -91,6 +93,34 @@ async function runCheck(dir: string): Promise<number> {
     return report.ok ? 0 : 1;
 }
 
+/** 送り先。偽のAIで作った作品は公開しない。 */
+function publisher(local: boolean): Publisher | undefined {
+    if (local) return undefined;
+    if (fake) {
+        console.log("偽のAIの作品なので送らない");
+        return undefined;
+    }
+    if (config.publish.target === "none") return undefined;
+    return new CloudflarePublisher({ ...config.publish, log: text => process.stdout.write(text) });
+}
+
+async function runSend(siteDir: string, local: boolean): Promise<number> {
+    const send = publisher(local);
+    if (!send) return 0;
+    const log = new Log(logPath(root));
+    log.line(`${send.name} へ送る`);
+    try {
+        await send.publish(siteDir);
+        log.line("公開した");
+        return 0;
+    } catch (e) {
+        if (!(e instanceof PublishError)) throw e;
+        // 組み立て済みの <VAR>/site/ はそのまま残る。作り直さずに publish をやり直せる。
+        log.line(`${e.fatal ? "人の対応が必要" : "送れなかった（あとでもう一度）"}: ${e.message}`);
+        return 2;
+    }
+}
+
 switch (command) {
     case "make":
         process.exitCode = await runMake();
@@ -112,6 +142,8 @@ switch (command) {
         console.log(`${site}: 作品 ${result.works} 件`);
         if (result.engines.length) console.log(`  エンジンを追加: ${result.engines.join(", ")}`);
         console.log(result.built.length ? `  作品をビルド: ${result.built.join(", ")}` : "  新しくビルドした作品はない");
+        if (result.removed.length) console.log(`  古い殻を掃除: ${result.removed.join(", ")}`);
+        process.exitCode = await runSend(site, args.includes("--local"));
         break;
     }
     case "budget": {
@@ -125,6 +157,6 @@ switch (command) {
         break;
     }
     default:
-        console.error("usage: fanm make [--fake] | check <dir> | publish | budget");
+        console.error("usage: fanm make [--fake] | check <dir> | publish [--local] | budget");
         process.exitCode = 2;
 }

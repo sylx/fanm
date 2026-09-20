@@ -28,6 +28,7 @@ fanM/
 ├─ templates/<型>/         作品の型ごとの手引き（form.md）と実例（work.ts）。AIへ渡すものであり、結線確認も兼ねる
 ├─ prompts/                AIへ渡す制作ルールと資料
 ├─ config/                 設定の例。実設定 fanm.json は git に入れない
+├─ wrangler.jsonc          公開先（Worker 名と fanm.oyabanare.com）。置き場所は publish が渡す
 ├─ docs/
 └─ var/                    バッチの制作状態（git に入れない。本番では永続ボリューム）
    ├─ jobs/  ledger/  works/  queue/  logs/
@@ -92,8 +93,9 @@ var/site/                        これがそのまま公開する中身
 - 作品は `import { ... } from "fantasy-msx"` を `../../engine/<commit>.js` への import に置き換えてビルドする（`publish/build.ts`）。プレイヤーも目録の `engine` を見て同じファイルを動的に読む。**プレイヤーがエンジンを静的に import してはいけない**。二つ目のエンジンが混ざる。
 - だからエンジンを更新しても、過去の作品はビルドし直さずに動く。新しいコミットの `engine/*.js` が一つ増えるだけ。
 - ギャラリーは目録だけを読み、作品は選ばれたときに iframe の中で動的に読む。
+- 殻を写したあと、殻が持たなくなったファイル（ビルドし直して名前が変わった `assets/` の古い版）は消す。作品とエンジンは殻の外で増えるので触らない。
 
-送り先（Cloudflare）はまだ決めていない。`publish/publisher.ts` に選択肢と、どちらでもこの組み立てが変わらない理由を書いてある。
+組み立てた `var/site/` は、そのまま Cloudflare Workers の静的アセットとして `fanm.oyabanare.com` へ送る（`publish/publisher.ts` が `wrangler deploy --assets` を呼ぶ）。一度出したファイルは中身も名前も変わらないので、送られるのは増えた分だけ。設定と初回の手順は [deploy.md](deploy.md)。
 
 ## 開発
 
@@ -104,16 +106,17 @@ npm run typecheck                   # fanM とエンジンのソースを合わ�
 npm run check:templates             # 全テンプレートをヘッドレスで動かし var/check/<型>/ に撮影
 npm run gallery:dev                 # play.html?work=<id> で手元の作品やテンプレートを再生
 npm run make                        # AIで一作品作る（走っている間に叩くと、その様子が見える）
-npm run publish                     # 採用作から var/site/ を組み立てる
+npm run publish                     # 採用作から var/site/ を組み立て、Cloudflare へ送る
+npm run publish:local               # 組み立てるところまで（送らない）
 ```
 
 ## 現状
 
 | 部分 | できていること | まだないもの |
 | --- | --- | --- |
-| バッチ | `fanm make`：企画 → 生成 → 検査 → 修正（最大2回）→ 採用/不採用 を一つのジョブとして回す。ジョブ状態と予算台帳を保存し、途中から再開できる。DeepSeek 接続と、APIキーなしで試す偽のAI（`--fake`）。検査は静的検査・型検査・隔離実行・撮影・画面の数値判定 | 常駐ループとスケジューラー（`fanm run`）、Dockerfile、公開（`fanm publish`）、不採用作の掃除、通知 |
+| バッチ | `fanm make`：企画 → 生成 → 検査 → 修正（最大2回）→ 採用/不採用 を一つのジョブとして回す。ジョブ状態と予算台帳を保存し、途中から再開できる。DeepSeek 接続と、APIキーなしで試す偽のAI（`--fake`）。検査は静的検査・型検査・隔離実行・撮影・画面の数値判定 | 常駐ループとスケジューラー（`fanm run`）、Dockerfile、不採用作の掃除、通知 |
 | ギャラリー | サムネイルの一覧、作品ごとのURL（`#<id>`）、ランダム再生、iframe の中での動的読込。開発時は未ビルドの手元の作品も再生できる | 連続再生、お気に入り |
-| つなぎ | `fanm publish` が `<VAR>/site/` に公開物を組み立てる。作品とエンジンは増えた分だけビルドする | Cloudflare へ送る部分（Workers Static Assets か R2 か未定）|
+| つなぎ | `fanm publish` が `<VAR>/site/` に公開物を組み立て、Cloudflare Workers（`fanm.oyabanare.com`）へ送る。作品とエンジンは増えた分だけビルドし、送るのも増えた分だけ | 定期的に公開する部分（`fanm run` から呼ぶ）、初回の deploy はまだしていない |
 
 ## バッチの制作状態（`<VAR>`、既定は `var/`、`FANM_VAR` で変更）
 

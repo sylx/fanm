@@ -64,7 +64,7 @@ Cloudflare Workers
       → ブラウザ上でfantasy-msxを実行
 ```
 
-ギャラリーには静的ファイルだけを置きます。生成頻度と公開頻度は分け、複数作品をまとめて公開できるようにします。作品をCloudflareへ届ける方式（Workersの再デプロイ、R2に置いてWorkerから読む、など）はまだ決めていません。
+ギャラリーには静的ファイルだけを置きます。生成頻度と公開頻度は分け、複数作品をまとめて公開できるようにします。作品はWorkersの静的アセットとして送ります（`wrangler deploy`）。一度出したファイルは中身も名前も変わらないので、作品が増えても送られるのは増えた分だけです。公開先は `fanm.oyabanare.com`、手順は [docs/deploy.md](docs/deploy.md) にあります。
 
 特定のAI事業者や公開先への依存は、接続部分に閉じ込めます。
 
@@ -185,4 +185,7 @@ npm install
 npm run typecheck
 npm run check:templates    # バッチ：5つのテンプレートをヘッドレスで動かして撮影
 npm run gallery:dev        # ギャラリー：play.html?work=ambient でテンプレートを再生
+npm run publish:local      # 公開物を var/site/ に組み立てる（どこへも送らない）
 ```
+
+Cloudflareへの公開（`npm run publish`）には `CLOUDFLARE_API_TOKEN` と `CLOUDFLARE_ACCOUNT_ID` が要ります。[docs/deploy.md](docs/deploy.md) を参照してください。

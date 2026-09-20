@@ -1,0 +1,20 @@
+{
+    // ギャラリーサイトの公開先。静的アセットだけの Worker で、動くコードは持たない。
+    //
+    //     fanm publish  →  <VAR>/site/ を組み立てて、ここの設定で送る
+    //
+    // 公開物の置き場所（assets）はここに書かない。<VAR> は本番では永続ボリュームに
+    // 移るので、設定ファイルからの相対パスでは届かない。publisher.ts が deploy のたびに
+    // --assets で絶対パスを渡す。
+    "$schema": "./node_modules/wrangler/config-schema.json",
+    "name": "fanm",
+    "compatibility_date": "2026-09-20",
+
+    // 公開するのはこのドメインだけ。workers.dev の名前と版ごとのプレビューURLは出さない。
+    // custom_domain は Cloudflare にある oyabanare.com ゾーンに DNS を自分で足す。
+    "routes": [
+        { "pattern": "fanm.oyabanare.com", "custom_domain": true }
+    ],
+    "workers_dev": false,
+    "preview_urls": false
+}

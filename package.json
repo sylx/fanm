@@ -16,6 +16,7 @@
     "make": "tsx packages/batch/src/cli.ts make",
     "make:fake": "tsx packages/batch/src/cli.ts make --fake",
     "publish": "npm run gallery:build && tsx packages/batch/src/cli.ts publish",
+    "publish:local": "npm run gallery:build && tsx packages/batch/src/cli.ts publish --local",
     "check:templates": "tsx packages/batch/src/cli.ts check templates/ambient templates/game templates/poem templates/adventure templates/rpg",
     "prompts:api": "tsx packages/batch/src/generate/api-docs.ts",
     "gallery:dev": "npm run dev -w @fanm/gallery",
@@ -25,6 +26,7 @@
     "@types/node": "^24.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
-    "vite": "^5.4.0"
+    "vite": "^5.4.0",
+    "wrangler": "^4.42.0"
   }
 }

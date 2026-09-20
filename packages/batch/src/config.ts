@@ -32,6 +32,14 @@ export interface Config {
         readonly attemptsPerDay: number;
         readonly maxRepairs: number;
     };
+    readonly publish: {
+        /** 送り先。"none" なら <VAR>/site/ を組み立てるだけで、どこへも送らない。 */
+        readonly target: "cloudflare" | "none";
+        /** Worker 名と公開ドメインが書いてあるファイル。置き場所（assets）は渡さない。 */
+        readonly wranglerConfig: string;
+        readonly apiTokenEnv: string;
+        readonly accountIdEnv: string;
+    };
 }
 
 export const DEFAULTS: Config = {
@@ -46,7 +54,13 @@ export const DEFAULTS: Config = {
     // 上限まで考え切って本文を返さないことがあった（実測で2回続けて空）。
     // 思考なしなら23秒・3千トークンでコードが返り、検査も通る。
     generation: { planMaxTokens: 4000, generateMaxTokens: 16000, reasoningEffort: "none" },
-    production: { attemptsPerDay: 4, maxRepairs: 2 }
+    production: { attemptsPerDay: 4, maxRepairs: 2 },
+    publish: {
+        target: "cloudflare",
+        wranglerConfig: "wrangler.jsonc",
+        apiTokenEnv: "CLOUDFLARE_API_TOKEN",
+        accountIdEnv: "CLOUDFLARE_ACCOUNT_ID"
+    }
 };
 
 type Partial2<T> = { [K in keyof T]?: Partial<T[K]> };
@@ -58,7 +72,8 @@ export function loadConfig(path = "config/fanm.json"): Config {
         provider: { ...DEFAULTS.provider, ...user.provider },
         budget: { ...DEFAULTS.budget, ...user.budget },
         generation: { ...DEFAULTS.generation, ...user.generation },
-        production: { ...DEFAULTS.production, ...user.production }
+        production: { ...DEFAULTS.production, ...user.production },
+        publish: { ...DEFAULTS.publish, ...user.publish }
     };
 }
 

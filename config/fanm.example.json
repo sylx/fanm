@@ -17,5 +17,11 @@
   "production": {
     "attemptsPerDay": 4,
     "maxRepairs": 2
+  },
+  "publish": {
+    "target": "cloudflare",
+    "wranglerConfig": "wrangler.jsonc",
+    "apiTokenEnv": "CLOUDFLARE_API_TOKEN",
+    "accountIdEnv": "CLOUDFLARE_ACCOUNT_ID"
   }
 }
