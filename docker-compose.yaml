@@ -18,7 +18,7 @@ services:
       # 公開先（Cloudflare Workers）。
       - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN}
       - CLOUDFLARE_ACCOUNT_ID=${CLOUDFLARE_ACCOUNT_ID}
-      # 人の対応が要るときだけ鳴る知らせ先（Discord や Slack の webhook）。無くてもよい。
+      # 知らせ先（Discord の webhook）。作品が出たときと、人の対応が要るときに鳴る。無くてもよい。
       - FANM_NOTIFY_WEBHOOK=${FANM_NOTIFY_WEBHOOK:-}
     volumes:
       - fanm-var:/data

@@ -24,7 +24,7 @@ import { decide, UNKNOWN_COST_RATIO } from "../scheduler/scheduler.js";
 import { acquire } from "./lock.js";
 import { takeRequest } from "./request.js";
 import { Log, logPath } from "./log.js";
-import { Notifier } from "./notify.js";
+import { COLOR, Notifier, type Embed } from "./notify.js";
 import { StateStore, statePath } from "./state.js";
 
 /** 目を覚ます間隔。短すぎても意味はないが、止まっていない証にはなる。 */
@@ -188,21 +188,31 @@ export async function runLoop(options: LoopOptions): Promise<number> {
 
     /**
      * 出た作品を知らせる。人を呼ぶのとは別の、ただの便り。
-     * サムネイルのURLを添えて、受け取った側で絵が見えるようにする。
+     * 一作品につき embed を一つ。題を押せばその作品が開き、サムネイルは絵として出る。
      */
     async function announce(ids: readonly string[]): Promise<void> {
         if (!ids.length) return;
         const site = config.publish.siteUrl.replace(/\/$/, "");
-        const lines = [`新しい作品が出た（${ids.length}件）`];
         // 新しい順に。多いときは絵を並べても読みにくいので、最初の4件だけ。
         const shown = [...ids].reverse().slice(0, 4);
-        for (const id of shown) {
+        const embeds = shown.map((id): Embed => {
             const meta = archive.meta(id);
-            const summary = meta.description.length > 100 ? `${meta.description.slice(0, 100)}…` : meta.description;
-            lines.push("", `${meta.title} — ${summary}`, `${site}/#${id}`, `${site}/works/${id}/thumb.png`);
-        }
-        if (ids.length > shown.length) lines.push("", `ほか ${ids.length - shown.length} 件`);
-        await notifier.say(lines.join("\n"));
+            const thumb = { url: `${site}/works/${id}/thumb.png` };
+            const fields = [{ name: "長さ", value: `${Math.round(meta.durationFrames / 60)}秒`, inline: true }];
+            if (meta.controls) fields.push({ name: "操作", value: meta.controls, inline: true });
+            return {
+                title: meta.title,
+                url: `${site}/#${id}`,
+                description: meta.description,
+                color: COLOR.work,
+                timestamp: meta.createdAt,
+                fields,
+                // 一作品だけなら大きく見せる。並ぶときは小さく添えて、題と説明を読ませる。
+                ...(shown.length === 1 ? { image: thumb } : { thumbnail: thumb })
+            };
+        });
+        const rest = ids.length - shown.length;
+        await notifier.say(`新しい作品が出た（${ids.length}件）${rest ? `。うち新しい ${shown.length} 件` : ""}`, embeds);
     }
 
     /** 公開物を組み立てて送る。送れたら true。 */

@@ -56,17 +56,21 @@ docker exec -it <container> node_modules/.bin/tsx packages/batch/src/cli.ts make
 
 ## 知らせ
 
-知らせ先は環境変数 `FANM_NOTIFY_WEBHOOK`（Discord や Slack の webhook URL）。飛ぶのは二種類だけで、どちらも設定していなければログに残る。
+知らせ先は環境変数 `FANM_NOTIFY_WEBHOOK`（Discord の webhook URL）。送り先は Discord と決めているので、embed で送る。飛ぶのは二種類だけで、どちらも設定していなければログに残る。
 
-**作品が出たとき。** 公開が済むたびに、その回に出た作品の題と説明、ギャラリーのリンク、サムネイルのURLを送る。受け取った側で絵が見える。多いときは新しい4件まで並べ、残りは件数だけ。
+携帯の通知に出るのは embed ではなく `content` なので、そこには一行で読める用件だけを置き、中身は embed に入れる。
 
-```text
-fanM: 新しい作品が出た（1件）
+**作品が出たとき。** 公開が済むたびに、その回に出た作品を一件ずつ embed にして送る。多いときは新しい4件まで並べ、残りは件数だけ（`content` が「新しい作品が出た（5件）。うち新しい 4 件」になる）。
 
-STONE HOLLOW — 草と水の地を歩き、洞窟の主に出会っては戦う。放っておくと…
-https://fanm.oyabanare.com/#20260920-090457-6man
-https://fanm.oyabanare.com/works/20260920-090457-6man/thumb.png
-```
+| embed | どこから | 見え方 |
+| --- | --- | --- |
+| 題 | `meta.title` | 押すと `<siteUrl>/#<id>` が開く |
+| 説明 | `meta.description` | |
+| 絵 | `<siteUrl>/works/<id>/thumb.png` | 一件だけなら大きく、並ぶときは右上に小さく |
+| 長さ・操作 | `meta.durationFrames` / `meta.controls` | 横に並ぶ。操作できない作品に「操作」は出さない |
+| 帯の色・時刻 | | 緑（プレイヤーの「CRT」と同じ）と `meta.createdAt` |
+
+サムネイルはURLを書くのではなく embed の絵として渡すので、Discord が取りに行く。公開が済んでから知らせるので、そのときには置かれている。
 
 **人の対応が要るとき。** 日常の失敗では呼ばない。不採用、一時的な通信断、送り直しはログに残して次へ進む。呼ぶのは、放っておいても直らないものだけ。
 
@@ -74,7 +78,7 @@ https://fanm.oyabanare.com/works/20260920-090457-6man/thumb.png
 - 公開の認証切れ・権限不足
 - 想定外の失敗が3回続いたとき
 
-こちらは同じ用件を6時間に一度しか鳴らさず、`fanm status` にも `人の対応が必要:` として残る。
+こちらは赤い embed 一つ（題は「人の対応が必要」、中身は何が起きたか、下に用件の名前）、`content` は `⚠️ 人の対応が必要` だけ。同じ用件は6時間に一度しか鳴らさず、`fanm status` にも `人の対応が必要:` として残る。
 
 ## 手元で試す
 
