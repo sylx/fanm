@@ -1,0 +1,208 @@
+// 制作を回し続ける常駐部。`fanm run` の中身。
+//
+//     待つ → 一作品つくる → （頃合いを見て）公開する → 待つ …
+//
+// 30秒ごとに目を覚まし、そのたびに「いま作ってよいか」をスケジューラーに訊く。
+// 頻度は残予算と実測の費用から決まる（scheduler.ts）。
+//
+// 止まらないことを第一にする。日常の失敗（不採用、一時的な通信断）は記録して次へ進み、
+// 放っておいても直らないもの（鍵切れ、権限不足、続けざまの想定外）だけ人を呼ぶ。
+// 途中で殺されても、ジョブと台帳と覚え書きは書かれた時点まで残るので、続きから再開する。
+
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { Archive } from "../archive/archive.js";
+import { BudgetExceeded, Ledger } from "../budget/ledger.js";
+import type { Config } from "../config.js";
+import { JobStore } from "../jobs/job.js";
+import { make } from "../jobs/make.js";
+import { ProviderError, type Provider } from "../providers/provider.js";
+import { PublishError, type Publisher } from "../publish/publisher.js";
+import { assemble } from "../publish/site.js";
+import { decide, UNKNOWN_COST_RATIO } from "../scheduler/scheduler.js";
+import { acquire } from "./lock.js";
+import { Log, logPath } from "./log.js";
+import { Notifier } from "./notify.js";
+import { StateStore, statePath } from "./state.js";
+
+/** 目を覚ます間隔。短すぎても意味はないが、止まっていない証にはなる。 */
+const TICK_MS = 30_000;
+/** 公開に失敗したあと、次に送ってみるまで。 */
+const PUBLISH_RETRY_MS = 30 * 60_000;
+/** 想定外の失敗が続いたときに空ける時間。 */
+const BACKOFF_MS = [60_000, 300_000, 900_000, 3_600_000];
+/** 続けざまに何回失敗したら人を呼ぶか。 */
+const CALL_HUMAN_AFTER = 3;
+
+export interface LoopOptions {
+    readonly config: Config;
+    /** 制作状態の置き場所。偽のAIなら <VAR>/fake/。 */
+    readonly root: string;
+    readonly fake: boolean;
+    readonly provider: Provider;
+    /** 送り先。undefined なら <VAR>/site/ を組み立てるだけで、どこへも送らない。 */
+    readonly publisher?: Publisher;
+    /** 一作品だけ作って終わる（動作確認用）。 */
+    readonly once?: boolean;
+}
+
+const sleep = (ms: number) => new Promise(done => setTimeout(done, ms));
+
+export async function runLoop(options: LoopOptions): Promise<number> {
+    const { config, root } = options;
+    mkdirSync(root, { recursive: true });
+    const lock = acquire(root);
+    if (!lock.held) {
+        console.error(`すでに動いている（pid ${lock.by.pid}、${lock.by.since} 開始）。二重には走らせない。`);
+        return 1;
+    }
+
+    const log = new Log(logPath(root));
+    const store = new StateStore(statePath(root));
+    const notifier = new Notifier(store, log);
+    const ledger = new Ledger(join(root, "ledger"), config.budget);
+    const jobs = new JobStore(join(root, "jobs"));
+    const archive = new Archive(join(root, "works"));
+
+    const swept = ledger.sweepReserved();
+    if (swept) log.line(`前回の中断で予約のまま残っていた ${swept} 件を、予約額のまま確定した`);
+    log.line(`常駐を始める（${options.fake ? "偽のAI、" : `${options.provider.name} ${options.provider.model}、`}状態は ${root}）`);
+
+    // 生きている目印は、制作の途中でも書き続ける。一作品つくるのに数分かかるので、
+    // 輪が一周するのを待っていると、動いていても止まって見える。
+    let phase = "starting";
+    const setPhase = (next: string, at?: Date) => {
+        phase = next;
+        store.beat(next, at);
+    };
+    const beating = setInterval(() => store.beat(phase), TICK_MS);
+    beating.unref();
+
+    // 中断していたジョブがあれば、間隔を待たずに続きから片づける。
+    let resume = jobs.unfinished().length > 0;
+    if (resume) log.line("中断していたジョブがある。間隔を待たずに続きから進める");
+
+    let nextPublishAt = 0;      // 公開に失敗したときだけ先へ延びる
+    let failures = 0;
+    let announced = "";
+
+    for (;;) {
+        const now = new Date();
+        try {
+            const decision = decide({
+                now,
+                lastAttemptAt: store.state.lastAttemptAt,
+                remainingUsd: ledger.remainingThisMonth(),
+                costPerAttemptUsd: ledger.costPerJob() ?? config.budget.perWorkUsd * UNKNOWN_COST_RATIO,
+                maxAttemptsPerDay: config.production.attemptsPerDay
+            });
+            // 同じことを30秒ごとに書かない。変わったときだけ一行。
+            const line = decision.paused
+                ? `休む: ${decision.paused}（${decision.reason}）`
+                : `次の制作は ${decision.next.toISOString()}。${decision.reason}`;
+            if (line !== announced) {
+                log.line(line);
+                announced = line;
+            }
+            setPhase(decision.paused ? "paused" : "waiting", decision.next);
+
+            const due = !decision.paused && (options.once || resume || decision.next.getTime() <= now.getTime());
+            if (due) {
+                resume = false;
+                setPhase("making");
+                // 始めた時刻を先に書く。作っている途中で落ちても、次の間隔はここから数える。
+                store.change(s => { s.lastAttemptAt = new Date().toISOString(); });
+                await makeOne();
+                announced = "";
+            }
+
+            if (Date.now() >= nextPublishAt && unpublished().length) {
+                const since = store.state.lastPublishAt ? Date.parse(store.state.lastPublishAt) : 0;
+                if (options.once || Date.now() - since >= config.publish.everyHours * 3_600_000) {
+                    setPhase("publishing");
+                    nextPublishAt = await publishOnce() ? 0 : Date.now() + PUBLISH_RETRY_MS;
+                    announced = "";
+                }
+            }
+            if (failures) {
+                notifier.clear("loop");
+                failures = 0;
+            }
+        } catch (e) {
+            // 想定外。止めずに、間を置いて続ける。続くようなら人を呼ぶ。
+            ++failures;
+            log.line(`想定外の失敗（${failures}回目）: ${(e as Error).stack ?? String(e)}`);
+            if (failures >= CALL_HUMAN_AFTER) {
+                await notifier.tell("loop", `制作が${failures}回続けて失敗している: ${(e as Error).message}`);
+            }
+            setPhase("failing");
+            await sleep(BACKOFF_MS[Math.min(failures - 1, BACKOFF_MS.length - 1)]);
+            announced = "";
+            continue;
+        }
+
+        if (options.once) {
+            log.line("一周したので終わる（--once）");
+            clearInterval(beating);
+            lock.release();
+            return 0;
+        }
+        await sleep(TICK_MS);
+    }
+
+    /** 一作品つくる。中断していたジョブがあればその続きから。 */
+    async function makeOne(): Promise<void> {
+        const job = jobs.unfinished()[0] ?? jobs.create();
+        log.line(`${job.id}: ${job.state} から開始${options.fake ? "（偽のAI）" : ""}`);
+        try {
+            const done = await make({ config, provider: options.provider, ledger, jobs, archive, log }, job);
+            const usd = done.calls.reduce((n, c) => n + c.usd, 0);
+            log.line(`${done.id}: ${done.state}（AI 呼出し ${done.calls.length} 回、$${usd.toFixed(4)}）`);
+            notifier.clear("provider");
+        } catch (e) {
+            // 月の予算切れはスケジューラーが翌月まで休ませる。ジョブは残り、続きから再開する。
+            if (e instanceof BudgetExceeded) log.line(`月間予算に達した: ${e.message}`);
+            else if (e instanceof ProviderError && e.fatal) await notifier.tell("provider", `AIのAPIを使えない（${e.kind}）: ${e.message}`);
+            else throw e;
+        }
+    }
+
+    /** まだ送っていない採用作。 */
+    function unpublished(): string[] {
+        const sent = new Set(store.state.published);
+        return archive.ids().filter(id => !sent.has(id));
+    }
+
+    /** 公開物を組み立てて送る。送れたら true。 */
+    async function publishOnce(): Promise<boolean> {
+        const fresh = unpublished();
+        log.line(`公開へ進む（まだ送っていない作品 ${fresh.length} 件）`);
+        const site = join(root, "site");
+        const result = await assemble(join(root, "works"), site);
+        log.line(`${site}: 作品 ${result.works} 件（新しくビルド ${result.built.length} 件、エンジン ${result.engines.length} 件）`);
+
+        const done = () => store.change(s => {
+            s.published = archive.ids();
+            s.lastPublishAt = new Date().toISOString();
+        });
+
+        if (!options.publisher) {
+            // 送り先がない（偽のAI、publish.target が none）。組み立てたところまでを覚えておく。
+            done();
+            return true;
+        }
+        try {
+            await options.publisher.publish(site);
+            log.line(`${options.publisher.name} へ公開した`);
+            notifier.clear("publish");
+            done();
+            return true;
+        } catch (e) {
+            if (!(e instanceof PublishError)) throw e;
+            // <VAR>/site/ はそのまま残る。作り直さずに送り直せる。
+            if (e.fatal) await notifier.tell("publish", `公開できない（直すまで何度送っても同じ）: ${e.message}`);
+            else log.line(`送れなかった（あとでもう一度）: ${e.message}`);
+            return false;
+        }
+    }
+}

@@ -39,6 +39,8 @@ export interface Config {
         readonly wranglerConfig: string;
         readonly apiTokenEnv: string;
         readonly accountIdEnv: string;
+        /** 公開の間隔（時間）。制作より粗くして、溜まった作品をまとめて出す。 */
+        readonly everyHours: number;
     };
 }
 
@@ -59,13 +61,18 @@ export const DEFAULTS: Config = {
         target: "cloudflare",
         wranglerConfig: "wrangler.jsonc",
         apiTokenEnv: "CLOUDFLARE_API_TOKEN",
-        accountIdEnv: "CLOUDFLARE_ACCOUNT_ID"
+        accountIdEnv: "CLOUDFLARE_ACCOUNT_ID",
+        everyHours: 6
     }
 };
 
 type Partial2<T> = { [K in keyof T]?: Partial<T[K]> };
 
-export function loadConfig(path = "config/fanm.json"): Config {
+/**
+ * 設定を読む。本番では永続ボリュームの上（FANM_CONFIG=/data/fanm.json）に置くと、
+ * イメージを作り直さずに頻度や予算を変えられる。無ければ既定値。
+ */
+export function loadConfig(path = process.env.FANM_CONFIG ?? "config/fanm.json"): Config {
     if (!existsSync(path)) return DEFAULTS;
     const user = JSON.parse(readFileSync(path, "utf8")) as Partial2<Config>;
     return {

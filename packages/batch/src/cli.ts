@@ -1,12 +1,13 @@
 #!/usr/bin/env -S npx tsx
 // バッチ処理の入口。
 //
+//     fanm run [--once]         常駐して制作を回し続ける。本番（Coolify）はこれを動かす
 //     fanm make [--fake]        ジョブを一つ最後まで進める。途中のジョブがあればその続きから
 //     fanm check <dir>...       work.ts と meta.json のあるディレクトリを検査する（AIは呼ばない）
+//     fanm status               いまどうなっているか。動いていなければ終了コード 1
 //     fanm budget               今月の使用額
 //
 // 制作は一度に一つだけ。すでに動いていれば、make はその様子を映すだけにする。
-//     fanm run                  （未実装）スケジューラーを起動して制作を回し続ける
 //     fanm publish [--local]    採用作から公開物を組み立て（<VAR>/site/）、Cloudflare へ送る
 //                               --local は組み立てるところまで。偽のAIの作品も送らない
 //
@@ -24,6 +25,8 @@ import { DeepSeek } from "./providers/deepseek.js";
 import { CloudflarePublisher, PublishError, type Publisher } from "./publish/publisher.js";
 import { assemble } from "./publish/site.js";
 import { acquire } from "./run/lock.js";
+import { runLoop } from "./run/loop.js";
+import { status } from "./run/status.js";
 import { follow, Log, logPath } from "./run/log.js";
 import { FakeProvider } from "./providers/fake.js";
 import { ProviderError, type Provider } from "./providers/provider.js";
@@ -122,6 +125,22 @@ async function runSend(siteDir: string, local: boolean): Promise<number> {
 }
 
 switch (command) {
+    case "run":
+        process.exitCode = await runLoop({
+            config,
+            root,
+            fake,
+            provider: provider(),
+            publisher: publisher(args.includes("--local")),
+            once: args.includes("--once")
+        });
+        break;
+    case "status": {
+        const report = status(root, config);
+        console.log(report.text);
+        process.exitCode = report.healthy ? 0 : 1;
+        break;
+    }
     case "make":
         process.exitCode = await runMake();
         break;
@@ -157,6 +176,6 @@ switch (command) {
         break;
     }
     default:
-        console.error("usage: fanm make [--fake] | check <dir> | publish [--local] | budget");
+        console.error("usage: fanm run [--once] | make [--fake] | check <dir> | status | publish [--local] | budget");
         process.exitCode = 2;
 }

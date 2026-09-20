@@ -14,7 +14,8 @@ fanM/
 │  ├─ work/                @fanm/work    作品形式。バッチ・ギャラリー・生成コードの共通の契約
 │  ├─ batch/               @fanm/batch   バッチ処理（chevron / Coolify で常駐）
 │  │  └─ src/
-│  │     ├─ cli.ts         入口（fanm check / run / publish）
+│  │     ├─ cli.ts         入口（fanm run / make / check / status / publish）
+│  │     ├─ run/           常駐の輪、鍵、ログ、覚え書き、知らせ
 │  │     ├─ scheduler/     制作頻度。残予算と残日数から決める
 │  │     ├─ budget/        予算台帳。予約と精算
 │  │     ├─ jobs/          ジョブ状態。再開と重複防止
@@ -38,7 +39,7 @@ fanM/
 ## fantasy-msx の組み込み
 
 - `engine/fantasy-msx` に submodule として置き、特定のコミットに固定する。
-- エンジンの更新は `git -C engine/fantasy-msx checkout <commit>` を別のコミットとして行い、作品生成とは混ぜない。生成コードやバッチが submodule の中を書き換えることはない。
+- エンジンの更新は `git -C engine/fantasy-msx checkout <commit>` を別のコミットとして行い、作品生成とは混ぜない。生成コードやバッチが submodule の中を書き換えることはない。更新したら `npm run engine:pin`（固定コミットを `engine/COMMIT` に控え直す。コンテナはそれを読む）。
 - fantasy-msx はパッケージとしてビルドされておらず、TypeScript のソースを直接読む形で使う。fanM 側では `fantasy-msx` → `engine/fantasy-msx/src/index.ts`、`fantasy-msx/*` → `engine/fantasy-msx/*` と別名を付けている（`tsconfig.base.json` の `paths`、`packages/gallery/vite.config.ts` の `alias`）。バッチは tsx で動かし、tsx が同じ `paths` を解決する。
 - fantasy-msx 自身が持つ WebMSX の submodule は取得しない。チップのコードは `src/core/vendor/` に取り込み済みで、WebMSX は取り込み直すときにしか使わない。
 - ヘッドレス撮影には fantasy-msx の `tools/capture.ts` と `tools/png.ts` を借りている。`src/` ではないので、エンジン側で動かされたら追従する。
@@ -106,6 +107,8 @@ npm run typecheck                   # fanM とエンジンのソースを合わ�
 npm run check:templates             # 全テンプレートをヘッドレスで動かし var/check/<型>/ に撮影
 npm run gallery:dev                 # play.html?work=<id> で手元の作品やテンプレートを再生
 npm run make                        # AIで一作品作る（走っている間に叩くと、その様子が見える）
+npm start                           # 常駐して作り続ける（本番のコンテナが動かすのもこれ）
+npm run status                      # いまどうなっているか（動いていなければ終了コード 1）
 npm run publish                     # 採用作から var/site/ を組み立て、Cloudflare へ送る
 npm run publish:local               # 組み立てるところまで（送らない）
 ```
@@ -114,9 +117,9 @@ npm run publish:local               # 組み立てるところまで（送らな
 
 | 部分 | できていること | まだないもの |
 | --- | --- | --- |
-| バッチ | `fanm make`：企画 → 生成 → 検査 → 修正（最大2回）→ 採用/不採用 を一つのジョブとして回す。ジョブ状態と予算台帳を保存し、途中から再開できる。DeepSeek 接続と、APIキーなしで試す偽のAI（`--fake`）。検査は静的検査・型検査・隔離実行・撮影・画面の数値判定 | 常駐ループとスケジューラー（`fanm run`）、Dockerfile、不採用作の掃除、通知 |
+| バッチ | `fanm make`：企画 → 生成 → 検査 → 修正（最大2回）→ 採用/不採用 を一つのジョブとして回す。ジョブ状態と予算台帳を保存し、途中から再開できる。DeepSeek 接続と、APIキーなしで試す偽のAI（`--fake`）。検査は静的検査・型検査・隔離実行・撮影・画面の数値判定。`fanm run`：残予算と実費から頻度を決めて回し続け、頃合いを見て公開し、直らない問題だけ知らせる。`fanm status` と Dockerfile／docker-compose.yaml（[docs/operate.md](operate.md)） | 不採用作の掃除、ブラウザでの確認、Coolify への初回デプロイ |
 | ギャラリー | サムネイルの一覧、作品ごとのURL（`#<id>`）、ランダム再生、iframe の中での動的読込。開発時は未ビルドの手元の作品も再生できる | 連続再生、お気に入り |
-| つなぎ | `fanm publish` が `<VAR>/site/` に公開物を組み立て、Cloudflare Workers（`fanm.oyabanare.com`）へ送る。作品とエンジンは増えた分だけビルドし、送るのも増えた分だけ | 定期的に公開する部分（`fanm run` から呼ぶ）、初回の deploy はまだしていない |
+| つなぎ | `fanm publish` が `<VAR>/site/` に公開物を組み立て、Cloudflare Workers（`fanm.oyabanare.com`）へ送る。作品とエンジンは増えた分だけビルドし、送るのも増えた分だけ。常駐はこれを既定6時間おきに、送っていない作品があるときだけ呼ぶ | 公開頻度の実測に基づく調整 |
 
 ## バッチの制作状態（`<VAR>`、既定は `var/`、`FANM_VAR` で変更）
 
@@ -127,7 +130,8 @@ var/
 ├─ works/<id>/private/   出さないもの（企画、検査結果、AI 呼出しの記録）
 ├─ ledger/YYYY-MM.json   予算台帳（予約と精算）
 ├─ site/                 公開物（fanm publish が組み立てる）
-├─ run.log / run.lock    制作のログと、二重起動を防ぐ鍵
+├─ run.log / run.lock    制作のログ（8MBで run.log.1 へ）と、二重起動を防ぐ鍵
+├─ run.json              常駐の覚え書き（最後の制作・公開、生きている目印、人を呼んだ用件）
 ├─ check/                fanm check の作業場所
 └─ fake/                 --fake のときは全部こちら
 ```

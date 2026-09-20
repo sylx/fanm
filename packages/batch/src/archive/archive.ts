@@ -17,10 +17,19 @@ import type { Plan } from "../plan/planner.js";
 
 const ROOT = resolve(import.meta.dirname, "../../../..");
 
-/** 固定している fantasy-msx のコミット。git がない環境（コンテナ）では環境変数から。 */
+/**
+ * 固定している fantasy-msx のコミット。作品はこの版のエンジンで動き続ける。
+ *
+ * 手元では git に訊く（submodule の指し先が常に正しい）。コンテナには .git も git も
+ * ないので、リポジトリに入っている engine/COMMIT を読む。二つが食い違ったままの
+ * イメージができないよう、Dockerfile がビルド時に突き合わせる。
+ */
 export function engineCommit(): string {
     if (process.env.FANM_ENGINE_COMMIT) return process.env.FANM_ENGINE_COMMIT;
-    return execFileSync("git", ["-C", join(ROOT, "engine/fantasy-msx"), "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+    if (existsSync(join(ROOT, ".git"))) {
+        return execFileSync("git", ["-C", join(ROOT, "engine/fantasy-msx"), "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+    }
+    return readFileSync(join(ROOT, "engine/COMMIT"), "utf8").trim();
 }
 
 export class Archive {
@@ -55,6 +64,13 @@ export class Archive {
         writeFileSync(join(priv, "report.json"), JSON.stringify(report, null, 2));
         writeFileSync(join(priv, "job.json"), JSON.stringify(job, null, 2));
         return meta;
+    }
+
+    /** 作品庫にある採用作のid。古い順。公開の要否を決めるのに使う。 */
+    ids(): string[] {
+        return readdirSync(this.dir)
+            .filter(id => existsSync(join(this.dir, id, "public", "meta.json")))
+            .sort();
     }
 
     /** 採用済み作品の企画。新しい順。企画の偏りを避けるために使う。 */

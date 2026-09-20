@@ -22,6 +22,7 @@
     "target": "cloudflare",
     "wranglerConfig": "wrangler.jsonc",
     "apiTokenEnv": "CLOUDFLARE_API_TOKEN",
-    "accountIdEnv": "CLOUDFLARE_ACCOUNT_ID"
+    "accountIdEnv": "CLOUDFLARE_ACCOUNT_ID",
+    "everyHours": 6
   }
 }

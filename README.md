@@ -183,9 +183,14 @@ AIのAPIキーとCloudflareの認証情報はバッチ処理が管理し、生�
 git submodule update --init
 npm install
 npm run typecheck
-npm run check:templates    # バッチ：5つのテンプレートをヘッドレスで動かして撮影
-npm run gallery:dev        # ギャラリー：play.html?work=ambient でテンプレートを再生
-npm run publish:local      # 公開物を var/site/ に組み立てる（どこへも送らない）
+npm run check:templates       # バッチ：5つのテンプレートをヘッドレスで動かして撮影
+npm run gallery:dev           # ギャラリー：play.html?work=ambient でテンプレートを再生
+npm run publish:local         # 公開物を var/site/ に組み立てる（どこへも送らない）
+npm run start:fake -- --once  # 偽のAIで制作の輪を一周（企画から公開物の組み立てまで）
+npm start                     # 常駐して作り続ける。本番（Coolify）が動かすのもこれ
+npm run status                # いまどうなっているか
 ```
 
 Cloudflareへの公開（`npm run publish`）には `CLOUDFLARE_API_TOKEN` と `CLOUDFLARE_ACCOUNT_ID` が要ります。[docs/deploy.md](docs/deploy.md) を参照してください。
+
+常駐の仕組み（頻度の決め方、人を呼ぶ条件、コンテナ、Coolifyへの置き方）は [docs/operate.md](docs/operate.md) にまとめています。

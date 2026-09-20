@@ -71,6 +71,27 @@ export class Ledger {
             .reduce((n, e) => n + cost(e), 0);
     }
 
+    /** 今月あといくら使えるか。制作の頻度を決めるのに使う。 */
+    remainingThisMonth(): number {
+        return this.limits.monthlyUsd - this.spentThisMonth();
+    }
+
+    /**
+     * 最近のジョブ一件あたりの費用（実測）。まだ履歴がなければ undefined。
+     * 単価表ではなく、これで頻度を決める。修正や不採用の分も入った実費なので、
+     * 「公開できた一作品あたり」に近い数字になる。
+     */
+    costPerJob(limit = 8): number | undefined {
+        const now = new Date();
+        const previous = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+        const byJob = new Map<string, number>();
+        for (const entry of [...this.read(this.path(previous)), ...this.read(this.path(now))]) {
+            byJob.set(entry.jobId, (byJob.get(entry.jobId) ?? 0) + cost(entry));
+        }
+        const recent = [...byJob.values()].slice(-limit);
+        return recent.length ? recent.reduce((n, usd) => n + usd, 0) / recent.length : undefined;
+    }
+
     /** 上限を超えるなら BudgetExceeded を投げ、呼出しをさせない。 */
     reserve(jobId: string, purpose: string, maxUsd: number): Entry {
         const entries = this.read();

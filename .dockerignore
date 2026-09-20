@@ -1,0 +1,16 @@
+# イメージに入れないもの。.git は入れる（submodule の指し先と engine/COMMIT が
+# 食い違っていないか確かめるため。ビルドの途中で使い、最後の段には残さない）。
+node_modules
+**/node_modules
+packages/gallery/dist
+dist
+
+# 制作状態。本番では永続ボリューム（/data）にある
+var
+
+# 認証情報と手元だけの設定
+.env
+config/fanm.json
+
+.wrangler
+*.log
