@@ -229,6 +229,13 @@ Fixed, and not configurable: **MSX2, V9938, NTSC 60Hz, 128KB VRAM**.
 
 ## 型宣言
 
+### 型の別名
+
+```ts
+export type ScreenModeName = "T1" | "T2" | "MC" | "G1" | "G2" | "G3" | "G4" | "G5" | "G6" | "G7";
+export type PaletteColor = readonly [number, number, number];
+```
+
 ### runtime/runtime
 
 ```ts

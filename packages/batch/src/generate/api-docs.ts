@@ -23,6 +23,12 @@ const SECTIONS = [
     "## Machine profile"
 ];
 
+/**
+ * 型の名前だけ載っていても、取り得る値が分からないと当てずっぽうになる。
+ * 実際に setMode("screen7") と書いて落ちたので、別名の定義も渡す。
+ */
+const ALIASES = ["api/v9938.d.ts", "bios/screen.d.ts", "runtime/runtime.d.ts"];
+
 const DECLARATIONS = [
     "runtime/runtime.d.ts",
     "bios/gfx.d.ts",
@@ -51,6 +57,18 @@ function section(readme: string, heading: string): string {
     return lines.slice(start, end).join("\n").trim();
 }
 
+/** 型の別名（"G4" | "G5" ... のような、取り得る値そのもの）だけを抜き出す。 */
+function aliases(dir: string): string {
+    const found = new Map<string, string>();
+    for (const file of ALIASES) {
+        for (const line of readFileSync(join(dir, file), "utf8").split("\n")) {
+            const match = /^export (?:declare )?type (\w+) = (.+);$/.exec(line.trim());
+            if (match && !found.has(match[1])) found.set(match[1], line.trim());
+        }
+    }
+    return [...found.values()].join("\n");
+}
+
 function declarations(): string {
     const out = mkdtempSync(join(tmpdir(), "fanm-dts-"));
     try {
@@ -60,13 +78,14 @@ function declarations(): string {
             "--target", "es2022", "--module", "esnext", "--moduleResolution", "bundler",
             "--lib", "es2022,dom", "--skipLibCheck", "--stripInternal"
         ], { stdio: "inherit" });
-        return DECLARATIONS.map(file => {
+        const aliasBlock = `### 型の別名\n\n\`\`\`ts\n${aliases(out)}\n\`\`\``;
+        return [aliasBlock, ...DECLARATIONS.map(file => {
             const body = readFileSync(join(out, file), "utf8")
                 .split("\n")
                 .filter(line => line.trim() && !/^\s*private /.test(line))
                 .join("\n");
             return `### ${file.replace(/\.d\.ts$/, "")}\n\n\`\`\`ts\n${body}\n\`\`\``;
-        }).join("\n\n");
+        })].join("\n\n");
     } finally {
         rmSync(out, { recursive: true, force: true });
     }

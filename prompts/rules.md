@@ -45,6 +45,16 @@ export default create;
 - `ctx.image`（画像読込）、`ctx.text`（ホストのフォント）、`ctx.console`、`ctx.ime`、`ctx.keyboard`、`ctx.crt` は使わない。文字は `gfx.text` / `gfx.now.text` の内蔵フォント（ASCII のみ）で描く。
 - 絵は描画命令、`gfx.drawImage` に渡す 1 画素 1 バイトの配列、スプライトで作る。音は MML（`compile` と `ctx.bgm`）か PSG / OPLL の直接操作で作る。
 
+## よくある間違い
+
+実際に型検査で落ちたものばかり。**API 資料の型宣言にある名前だけを使う。無い名前を推測で呼ばない**（`?.` でごまかすと、その場は通っても何も起きない）。
+
+- **`ctx` から使うものを分割代入する。** `update({ screen, gfx })` のように受け取る。関数の外で `screen` と書くと、ブラウザの `window.screen` として解釈され、`setColor` も `setMode` も無いと言われる。`gfx` や `sprites` を使う関数には `ctx` を渡す。
+- **画面モードは `screen.setMode("G4")`。** 値は `"G4"`（SCREEN 5）、`"G5"`（SCREEN 6）、`"G6"`（SCREEN 7）、`"G7"`（SCREEN 8）。`"screen7"` や `"graphic7"` という値は無い。
+- **時刻は `ctx.frame`。** `env` にあるのは `seed` と `random` だけで、`env.frame` は無い。
+- **パレットは `screen.setColor(index, r, g, b)` か `screen.setPalette([[r,g,b], ...])`。** `setPaletteEntry` は Screen には無い。
+- **スプライトは `ctx.sprites`。** `sprites.setPatternFromBitmap(n, [...])`、`sprites.set(n, {...})`、`sprites.move(n, x, y)`、`sprites.setActiveCount(n)`。`gfx` にスプライトの命令は無い。
+
 ## よい作品にするために
 
 - 無操作でも 30〜60 秒楽しめること。操作できる作品も、開始操作を待たずに自動で見どころまで進む（デモプレイなど）。
