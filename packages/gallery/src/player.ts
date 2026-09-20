@@ -130,6 +130,23 @@ function launch(): void {
     button.setAttribute("aria-pressed", String(crt && !!runtime.crt));
 }
 
+/**
+ * 目録（親の窓）から送られてくるキー。
+ *
+ * エンジンはこの窓の keydown を聞いている。焦点が目録の側にあるときは、
+ * そちらにしか届かない。だから目録が遊びのキーだけを転送してくる。
+ * 焦点がこちらにあるときは、目録には何も届かないので重ならない。
+ */
+window.addEventListener("message", event => {
+    if (event.origin !== location.origin) return;
+    const data = event.data as { fanm?: unknown; code?: unknown; down?: unknown };
+    if (data?.fanm !== "key" || typeof data.code !== "string") return;
+    runtime?.input.setKey(data.code, data.down === true);
+});
+
+// 画面を触られたら、以後のキーはこちらで受ける。
+window.addEventListener("pointerdown", () => window.focus());
+
 button.addEventListener("click", () => {
     crt = !crt;
     localStorage.setItem(CRT_KEY, crt ? "on" : "off");

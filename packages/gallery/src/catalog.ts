@@ -2,6 +2,12 @@
 //
 // 作品そのものはここでは読み込まない。選ばれたときに iframe の中で
 // 動的に読む。切り替えるたびに iframe ごと作り直して実行環境を捨てる。
+//
+// キーボードは焦点のある文書にしか届かない。作品は iframe の中で動いている
+// ので、目録に焦点が残っていると、操作できる作品が一切反応しない。だから
+// 選んだ時点で iframe へ焦点を移し、それでも目録の側にキーが届いたときは
+// （閉じるボタンを押したあとなど）、そのキーを iframe へ送る。同じ押鍵が
+// 両方の文書に届くことはないので、二重には入らない。
 
 import type { CatalogEntry } from "./catalog-entry.js";
 
@@ -14,11 +20,34 @@ const close = document.querySelector("#close") as HTMLAnchorElement;
 let frame: HTMLIFrameElement | null = null;
 let playing: CatalogEntry | null = null;
 
+/** エンジンが遊びに使うキー（fantasy-msx の DEFAULT_KEY_MAP）。 */
+const PLAY_KEYS = new Set([
+    "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "KeyZ", "KeyX",
+    "KeyW", "KeyA", "KeyS", "KeyD", "KeyN", "KeyM"
+]);
+
+/** 目録の側で押されたまま送ったキー。焦点が外れたときに離してやる。 */
+const forwarded = new Set<string>();
+
+function send(code: string, down: boolean): void {
+    frame?.contentWindow?.postMessage({ fanm: "key", code, down }, location.origin);
+    if (down) forwarded.add(code);
+    else forwarded.delete(code);
+}
+
+function releaseForwarded(): void {
+    for (const code of [...forwarded]) send(code, false);
+}
+
 function play(entry: CatalogEntry): void {
     const next = document.createElement("iframe");
     next.title = entry.title;
     next.allow = "autoplay";
     next.src = `play.html?work=${encodeURIComponent(entry.id)}`;
+    // 読み込み終わってから焦点を移す。ここで移さないと、カードを押した指の
+    // 行き先は目録のボタンのままで、矢印キーは目録を送るだけになる。
+    next.addEventListener("load", () => next.contentWindow?.focus());
+    releaseForwarded();
     frame?.remove();
     frame = next;
     playing = entry;
@@ -32,11 +61,27 @@ function play(entry: CatalogEntry): void {
 
 /** 再生をやめて一覧だけに戻す。iframe を捨てるので音も止まる。 */
 function stop(): void {
+    forwarded.clear();
     frame?.remove();
     frame = null;
     playing = null;
     stage.hidden = true;
 }
+
+// 目録に焦点が残ったままでも遊べるように、遊びのキーだけを作品へ送る。
+// 矢印で目録が動いてしまわないよう、送ったキーはここで止める。
+for (const [type, down] of [["keydown", true], ["keyup", false]] as const) {
+    window.addEventListener(type, event => {
+        const key = event as KeyboardEvent;
+        if (!frame || key.repeat || key.ctrlKey || key.metaKey || key.altKey) return;
+        if (!PLAY_KEYS.has(key.code)) return;
+        send(key.code, down);
+        key.preventDefault();
+    });
+}
+
+// 窓から出たまま押されていたキーは、押しっぱなしとして残ってしまう。
+window.addEventListener("blur", releaseForwarded);
 
 // createdAt は ISO 8601。閲覧者の暦で日付だけ出す（時刻までは要らない）。
 function date(iso: string): string {
