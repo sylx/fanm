@@ -13,6 +13,7 @@ import { createEnv, type WorkFactory } from "@fanm/work";
 import type { CatalogEntry } from "./catalog-entry.js";
 
 type Engine = typeof import("fantasy-msx");
+type Runtime = ReturnType<Engine["boot"]>;
 
 interface Loaded {
     readonly factory: WorkFactory;
@@ -20,12 +21,23 @@ interface Loaded {
     readonly engine: Engine;
 }
 
+/**
+ * VDP が出す一画面。中央の 256x212（または 512x212）と、その周りに VDP 自身が
+ * 描く枠を合わせた大きさ。画面はこの整数倍でしか出さない。半端な倍率で拡大
+ * すると、ある列だけ二重になって絵が崩れる。
+ */
+const FRAME = { width: 272, height: 228 } as const;
+
+const CRT_KEY = "fanM.crt";
+
 const url = (path: string) => new URL(path, location.href).href;
 
 async function fromCatalog(id: string): Promise<Loaded | null> {
     const response = await fetch("works/index.json").catch(() => null);
     if (!response?.ok) return null;
-    const entry = ((await response.json()) as CatalogEntry[]).find(w => w.id === id);
+    // 開発サーバーは無いパスに index.html を返すので、JSON とは限らない。
+    const catalog = await response.json().catch(() => null) as CatalogEntry[] | null;
+    const entry = catalog?.find(w => w.id === id);
     if (!entry) return null;
     const [work, engine] = await Promise.all([
         import(/* @vite-ignore */ url(entry.work)),
@@ -43,12 +55,76 @@ async function fromDisk(id: string): Promise<Loaded | null> {
     return { factory, seed: 1, engine: await import("fantasy-msx") };
 }
 
+/** 入る中で一番大きい整数倍。窓が小さくても 1 は下回らない。 */
+function scaleFor(width: number, height: number): number {
+    return Math.max(1, Math.floor(Math.min(width / FRAME.width, height / FRAME.height)));
+}
+
+/** 実サイズと見かけの大きさを、同じ整数倍にそろえる。 */
+function fit(canvas: HTMLCanvasElement): void {
+    const scale = scaleFor(window.innerWidth, window.innerHeight);
+    const width = FRAME.width * scale;
+    const height = FRAME.height * scale;
+    if (canvas.width !== width) canvas.width = width;
+    if (canvas.height !== height) canvas.height = height;
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+}
+
+// ギャラリーの iframe の中なら、外側に目録がもう出ている。直接開かれた
+// ときだけ、目録へ戻る道を出す。
+if (window.top === window.self) (document.querySelector("#home") as HTMLElement).hidden = false;
+
 const params = new URLSearchParams(location.search);
 const id = params.get("work") ?? "minimal";
-const found = (await fromCatalog(id)) ?? (await fromDisk(id));
-if (!found) throw new Error(`作品 ${id} が見つからない`);
+// 開発中は手元のものを先に見る。公開物を組み立て直さずに試せるように。
+const found = import.meta.env.DEV
+    ? (await fromDisk(id)) ?? (await fromCatalog(id))
+    : (await fromCatalog(id)) ?? (await fromDisk(id));
+if (!found) {
+    // body ごと書き換えると戻る道も消えるので、canvas だけ差し替える。
+    const error = document.createElement("p");
+    error.id = "error";
+    error.textContent = `作品 ${id} が見つかりません。`;
+    document.querySelector("canvas")!.replaceWith(error);
+    document.querySelector("#crt")!.remove();
+    throw new Error(`作品 ${id} が見つからない`);
+}
 
 const seed = params.has("seed") ? Number(params.get("seed")) : found.seed;
-found.engine.run(found.factory(createEnv(seed)), {
-    canvas: document.querySelector("canvas") as HTMLCanvasElement
+const button = document.querySelector("#crt") as HTMLButtonElement;
+let canvas = document.querySelector("canvas") as HTMLCanvasElement;
+// ?crt=1 / ?crt=0 が最優先。指定がなければ前回の選択を覚えている。
+let crt = params.has("crt") ? params.get("crt") !== "0" : localStorage.getItem(CRT_KEY) === "on";
+let runtime: Runtime | null = null;
+
+/**
+ * 作品を頭から動かす。canvas は最初に与えられた種類の context を一生持つので、
+ * CRT を入れ切りするには canvas ごと作り直して起動し直すしかない。作品は
+ * 起動のたびに状態を作り直せる形なので、そのまま最初から始まる。
+ */
+function launch(): void {
+    runtime?.stop();
+    fit(canvas);
+    runtime = found!.engine.run(found!.factory(createEnv(seed)), { canvas, crt });
+    // WebGL2 が無い環境では host が平面描画に落とすので、押しても効かない。
+    button.setAttribute("aria-pressed", String(crt && !!runtime.crt));
+}
+
+button.addEventListener("click", () => {
+    crt = !crt;
+    localStorage.setItem(CRT_KEY, crt ? "on" : "off");
+    const fresh = canvas.cloneNode(false) as HTMLCanvasElement;
+    canvas.replaceWith(fresh);
+    canvas = fresh;
+    launch();
 });
+
+// 窓の大きさが変わったら倍率を取り直す。実サイズが変わらなければ何も起きない。
+let pending = 0;
+window.addEventListener("resize", () => {
+    cancelAnimationFrame(pending);
+    pending = requestAnimationFrame(() => fit(canvas));
+});
+
+launch();

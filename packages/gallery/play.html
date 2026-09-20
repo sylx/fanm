@@ -2,11 +2,35 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>fanM player</title>
-  <style>html, body { margin: 0; height: 100%; background: #000; } canvas { width: 100%; height: 100%; display: block; }</style>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+    body { display: grid; place-items: center; }
+    /* 実サイズは JS が 272x228 の整数倍に合わせる。CSS で引き伸ばさない。 */
+    canvas { display: block; image-rendering: pixelated; background: #000; touch-action: none; }
+    .chrome {
+      position: fixed; z-index: 1;
+      border: 1px solid #2c2c46; background: #16162ac0; color: #9a9ab8;
+      padding: 4px 10px; border-radius: 4px; cursor: pointer; text-decoration: none;
+      font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .1em;
+      opacity: .35; transition: opacity .15s;
+    }
+    body:hover .chrome, .chrome:focus-visible { opacity: 1; }
+    #home { left: 8px; top: 8px; }
+    #crt { right: 8px; bottom: 8px; }
+    #crt[aria-pressed="true"] { background: #2f6b4ac0; border-color: #3f8a60; color: #dff2e6; }
+    #error { color: #d66; font: 13px/1.6 system-ui, sans-serif; padding: 16px; }
+  </style>
 </head>
 <body>
   <canvas></canvas>
+  <!-- 目録に戻る道。ギャラリーの iframe の中では要らないので、
+       自分が一番上の窓のときだけ player.ts が出す。 -->
+  <a id="home" class="chrome" href="./" hidden>&larr; fanM</a>
+  <button id="crt" class="chrome" aria-pressed="false" title="走査線、にじみ、曲面のブラウン管">CRT</button>
   <script type="module" src="./src/player.ts"></script>
 </body>
 </html>
