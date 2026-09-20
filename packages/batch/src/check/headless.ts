@@ -4,6 +4,7 @@
 import { BUTTON, boot } from "fantasy-msx";
 import { readFrame, type Image } from "fantasy-msx/tools/capture.js";
 import { createEnv, type Scenario, type WorkFactory } from "@fanm/work";
+import { PACE } from "./pace.js";
 
 export interface Capture {
     readonly frame: number;
@@ -15,12 +16,15 @@ export interface Capture {
 
 export type RunResult =
     | { readonly ok: true; readonly captures: readonly Capture[] }
-    | { readonly ok: false; readonly frame: number; readonly error: string; readonly captures: readonly Capture[] };
+    | { readonly ok: false; readonly frame: number; readonly error: string; readonly captures: readonly Capture[] }
+    /** 遅すぎて最後まで走らないと分かったので、途中でやめた。 */
+    | { readonly ok: false; readonly slow: true; readonly frame: number; readonly msPerFrame: number; readonly captures: readonly Capture[] };
 
-export function runHeadless(factory: WorkFactory, scenario: Scenario): RunResult {
+export function runHeadless(factory: WorkFactory, scenario: Scenario, onProgress?: (frame: number) => void): RunResult {
     const runtime = boot();
     const captures: Capture[] = [];
     const wanted = new Set(scenario.captures);
+    const started = performance.now();
     let frame = 0;
     try {
         runtime.run(factory(createEnv(scenario.seed)));
@@ -31,6 +35,14 @@ export function runHeadless(factory: WorkFactory, scenario: Scenario): RunResult
                 else runtime.input.setButton(BUTTON[input.code], input.down);
             }
             runtime.step();
+            if (frame % 60 === 0) {
+                onProgress?.(frame);
+                // 見込みのない作品に120秒かけない。同じ助言を早く返すほうがよい。
+                const msPerFrame = (performance.now() - started) / frame;
+                if (frame >= PACE.after && msPerFrame > PACE.maxMsPerFrame) {
+                    return { ok: false, slow: true, frame, msPerFrame, captures };
+                }
+            }
             if (wanted.has(frame)) {
                 captures.push({
                     frame,

@@ -23,6 +23,8 @@ export interface RunnerResult {
     readonly ok: boolean;
     readonly error?: string;
     readonly errorFrame?: number;
+    /** 遅すぎて途中でやめた。 */
+    readonly slow?: boolean;
     readonly captures: readonly RunnerCapture[];
     readonly msPerFrame: number;
 }
@@ -34,7 +36,11 @@ export function record(factory: unknown, scenarioPath: string, outDir: string): 
     const started = performance.now();
     try {
         if (typeof factory !== "function") throw new Error("work.ts の default export が関数ではない");
-        const run = runHeadless(factory as WorkFactory, scenario);
+        // 途中経過。時間切れで殺されたとき、親がどこまで進んだかを知るため。
+        const progress = join(outDir, "progress.json");
+        const run = runHeadless(factory as WorkFactory, scenario, frame => {
+            writeFileSync(progress, JSON.stringify({ frame, ms: performance.now() - started }));
+        });
         let previous: Uint32Array | undefined;
         const captures = run.captures.map(capture => {
             const file = `${capture.frame}.png`;
@@ -47,7 +53,9 @@ export function record(factory: unknown, scenarioPath: string, outDir: string): 
         const msPerFrame = (performance.now() - started) / Math.max(1, run.ok ? scenario.frames : run.frame);
         result = run.ok
             ? { ok: true, captures, msPerFrame }
-            : { ok: false, error: run.error, errorFrame: run.frame, captures, msPerFrame };
+            : "slow" in run
+                ? { ok: false, slow: true, errorFrame: run.frame, captures, msPerFrame: run.msPerFrame }
+                : { ok: false, error: run.error, errorFrame: run.frame, captures, msPerFrame };
     } catch (e) {
         result = { ok: false, error: e instanceof Error ? e.stack ?? e.message : String(e), captures: [], msPerFrame: 0 };
     }

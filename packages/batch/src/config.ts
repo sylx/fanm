@@ -37,7 +37,7 @@ export interface Config {
 export const DEFAULTS: Config = {
     provider: {
         name: "deepseek",
-        model: "deepseek-v4-pro",
+        model: "deepseek-flash",
         apiKeyEnv: "DEEPSEEK_API_KEY",
         baseUrl: "https://api.deepseek.com"
     },

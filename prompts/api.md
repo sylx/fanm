@@ -1,4 +1,4 @@
-# fantasy-msx API（4e8a12f）
+# fantasy-msx API（c7bf248）
 
 このファイルは `npm run prompts:api` で生成する。手で編集しない。
 
@@ -112,6 +112,11 @@ screen.frame();
 
 Sprite colours may be given per line, which is a V9938 feature with no
 equivalent on an MSX1: one sprite, shaded, instead of two stacked.
+
+Coordinates are whole pixels. Anything else is rounded to the nearest one on
+the way in, so positions worked out with `sin` and `cos` can be passed straight
+through - a fraction reaching the packing would otherwise pick its shift from
+the fractional part and corrupt the pixel sharing the byte.
 
 ### Writing a game
 

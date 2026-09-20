@@ -9,6 +9,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { Scenario, WorkDescription } from "@fanm/work";
 import { runIsolated } from "./isolated.js";
+import { slowAdvice } from "./pace.js";
 import type { RunnerCapture } from "./runner.js";
 import { staticCheck } from "./static.js";
 import { typecheck } from "./typecheck.js";
@@ -103,6 +104,9 @@ export async function checkWork(dir: string, seed: number): Promise<CheckReport>
 
     const { result } = run;
     const observations = describe(result.captures);
+    if (result.slow) {
+        return fail("timeout", [slowAdvice(scenario.frames, result.errorFrame ?? 0, result.msPerFrame)], result.captures, observations);
+    }
     if (!result.ok) {
         return fail("runtime", [`${result.errorFrame ?? 0}フレーム目で例外:\n${tidy(result.error ?? "", dir)}`], result.captures, observations);
     }

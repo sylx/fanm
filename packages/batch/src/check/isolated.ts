@@ -12,6 +12,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { build } from "esbuild";
 import type { Scenario } from "@fanm/work";
+import { slowAdvice, stallAdvice } from "./pace.js";
 import type { RunnerResult } from "./runner.js";
 
 const ROOT = resolve(import.meta.dirname, "../../../..");
@@ -55,6 +56,22 @@ async function bundle(workPath: string, outDir: string): Promise<string | null> 
     }
 }
 
+/** 時間切れの知らせ。どこまで進んだか、実機の何倍遅いかまで書く。 */
+function timeoutMessage(outDir: string, frames: number, timeoutMs: number): string {
+    const path = join(outDir, "progress.json");
+    const seconds = timeoutMs / 1000;
+    if (!existsSync(path)) {
+        return `${seconds}秒たっても最初の60フレームすら描き終えなかった。1フレームの処理が重すぎる。`;
+    }
+    const { frame, ms } = JSON.parse(readFileSync(path, "utf8")) as { frame: number; ms: number };
+    const perFrame = ms / Math.max(1, frame);
+    const stalled = seconds - ms / 1000;
+    // そこまで速く走っていたなら、遅いのではなく、あるフレームで止まっている。
+    return perFrame < 5 && stalled > 10
+        ? stallAdvice(frame, stalled)
+        : slowAdvice(frames, frame, perFrame, seconds);
+}
+
 export async function runIsolated(workPath: string, scenario: Scenario, outDir: string, options: IsolatedOptions): Promise<IsolatedResult> {
     const buildError = await bundle(workPath, outDir);
     if (buildError) return { stage: "build", error: buildError };
@@ -80,7 +97,7 @@ export async function runIsolated(workPath: string, scenario: Scenario, outDir: 
     const code = await new Promise<number | null>(done => child.on("close", done));
     clearTimeout(timer);
 
-    if (timedOut) return { stage: "timeout", error: `${options.timeoutMs / 1000}秒以内に ${scenario.frames} フレームを走り切らなかった` };
+    if (timedOut) return { stage: "timeout", error: timeoutMessage(outDir, scenario.frames, options.timeoutMs) };
     const resultPath = join(outDir, "result.json");
     if (code !== 0 || !existsSync(resultPath)) {
         return { stage: "crash", error: `子プロセスが終了コード ${code} で落ちた\n${stderr}` };
