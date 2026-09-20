@@ -12,8 +12,8 @@
 // 相手は「たまに」にしておける。0 にすると引かれない（消さずに休ませられる）。
 
 import type { ProviderConfig } from "../config.js";
-import { Claude, CLAUDE_API_KEY_ENV } from "./claude.js";
-import { DeepSeek, DEEPSEEK_API_KEY_ENV } from "./deepseek.js";
+import { Claude, CLAUDE_API_KEY_ENV, CLAUDE_MODELS } from "./claude.js";
+import { DeepSeek, DEEPSEEK_API_KEY_ENV, DEEPSEEK_MODELS } from "./deepseek.js";
 import { FakeProvider } from "./fake.js";
 import type { Provider } from "./provider.js";
 
@@ -59,6 +59,16 @@ export function drawProvider(
 export function deckNamed(deck: readonly ProviderConfig[], wanted: string): readonly ProviderConfig[] | undefined {
     const found = deck.filter(e => e.name === wanted || e.model === wanted);
     return found.length ? found : undefined;
+}
+
+/**
+ * 単価表に無い相手。鍵が要らないので、手元から本番へ設定を送る前の点検に使う
+ * （scripts/conf-push.sh）。verifyDeck は鍵も見るが、そちらは動かす側の話。
+ */
+export function unknownModels(deck: readonly ProviderConfig[]): string[] {
+    const known = (entry: ProviderConfig) =>
+        entry.name === "fake" || (entry.name === "claude" ? CLAUDE_MODELS : DEEPSEEK_MODELS).includes(entry.model);
+    return deck.filter(e => !known(e)).map(e => `${e.name} / ${e.model}`);
 }
 
 /** 札を実際の接続にする。鍵が無ければここで止まる。 */

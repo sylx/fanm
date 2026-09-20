@@ -17,6 +17,9 @@ const PRICES: Record<string, { hit: number; miss: number; output: number }> = {
  * ピーク時間帯は UTC 01:00-04:00 と 06:00-10:00（月〜金、中国の祝日を除く）。
  * 祝日は判定せず、ピーク扱いにして高めに数える。
  */
+/** 単価の分かっているモデル。鍵が無くても確かめられる。 */
+export const DEEPSEEK_MODELS = Object.keys(PRICES);
+
 export function isPeak(at: Date): boolean {
     const day = at.getUTCDay();
     if (day === 0 || day === 6) return false;

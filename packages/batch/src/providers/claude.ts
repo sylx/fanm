@@ -27,6 +27,9 @@ const PRICES: Record<string, { input: number; output: number }> = {
     "claude-sonnet-5": { input: 2, output: 10 }
 };
 
+/** 単価の分かっているモデル。鍵が無くても確かめられる。 */
+export const CLAUDE_MODELS = Object.keys(PRICES);
+
 /** キャッシュの単価は入力の何倍か。読み出しは安く、書き込みは少し高い（5分もつ）。 */
 const CACHE = { read: 0.1, write: 1.25 } as const;
 
