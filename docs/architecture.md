@@ -75,7 +75,7 @@ fanM/
 
 - `work.ts` は `(env: WorkEnv) => App` を default export する。起動ごとに状態を作り直せるよう、`App` を直接は出さない。
 - 時刻はフレーム、乱数は `env.random`（seed 付き mulberry32）。
-- `meta.json` のうち、AI が書くのは `WorkDescription`（タイトル、説明、操作、長さ）。id、日時、エンジンのコミット、seed、サムネイルはバッチが足す。
+- `meta.json` のうち、AI が書くのは `WorkDescription`（タイトル、説明、操作、長さ）。id、日時、エンジンのコミット、書いたモデル名、seed、サムネイルはバッチが足す。モデル名は生成・修正の呼出しの記録から採るので、事業者を増やしても作品ごとにどの頭が書いたか残る（記録を始める前の作品には無い）。
 
 ## 公開物の組み立て（`fanm publish`）
 

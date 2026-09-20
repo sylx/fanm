@@ -78,6 +78,11 @@ export interface WorkMeta extends WorkDescription {
     readonly createdAt: string;
     /** fantasy-msx のコミット。公開サイトはこれに合うエンジンで再生する。 */
     readonly engine: string;
+    /**
+     * このコードを書いたAIのモデル名。事業者を増やしても、どの頭が作ったかで
+     * 作品を見分けられるように残す。モデル名を記録する前の作品にはない。
+     */
+    readonly model?: string;
     readonly seed: number;
     readonly thumbnail: string;
 }

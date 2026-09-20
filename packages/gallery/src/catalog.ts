@@ -159,7 +159,18 @@ function card(entry: CatalogEntry): HTMLLIElement {
     const created = document.createElement("time");
     created.dateTime = entry.createdAt;
     created.textContent = date(entry.createdAt);
-    button.append(image, title, description, created);
+    // 日付と、書いたAIの名前を同じ行に。モデル名を残す前の作品には無いので、
+    // そのときは日付だけが出る。
+    const foot = document.createElement("small");
+    foot.className = "foot";
+    foot.append(created);
+    if (entry.model) {
+        const model = document.createElement("span");
+        model.className = "model";
+        model.textContent = entry.model;
+        foot.append(model);
+    }
+    button.append(image, title, description, foot);
     button.addEventListener("click", () => play(entry));
     item.append(button);
     return item;

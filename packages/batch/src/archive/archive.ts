@@ -32,6 +32,17 @@ export function engineCommit(): string {
     return readFileSync(join(ROOT, "engine/COMMIT"), "utf8").trim();
 }
 
+/**
+ * この作品のコードを書いたモデル。企画と生成を別の事業者に頼むこともあるので、
+ * 最後の生成・修正の呼出しから採る。モデルを記録する前のジョブでは undefined。
+ */
+function modelOf(job: Job): string | undefined {
+    for (let i = job.calls.length - 1; i >= 0; --i) {
+        if (job.calls[i].purpose !== "plan") return job.calls[i].model || undefined;
+    }
+    return undefined;
+}
+
 export class Archive {
     constructor(readonly dir: string) {
         mkdirSync(dir, { recursive: true });
@@ -53,6 +64,7 @@ export class Archive {
             durationFrames: report.scenario.frames,
             createdAt: new Date().toISOString(),
             engine: engineCommit(),
+            model: modelOf(job),
             seed: job.seed,
             thumbnail: "thumbnail.png"
         };

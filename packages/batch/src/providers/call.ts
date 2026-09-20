@@ -12,6 +12,8 @@ const RETRY_DELAYS_MS = [30_000, 120_000, 480_000];
 export interface CallLog {
     readonly purpose: string;
     readonly at: string;
+    /** 答えたモデル。事業者を混ぜても、どの呼出しを誰がやったか残るように。 */
+    readonly model: string;
     readonly usd: number;
     readonly inputTokens: number;
     readonly cachedInputTokens: number;
@@ -53,7 +55,7 @@ export async function call(
             });
             return {
                 ...result,
-                log: { purpose, at: entry.at, ...usage, truncated: result.truncated }
+                log: { purpose, at: entry.at, model: provider.model, ...usage, truncated: result.truncated }
             };
         } catch (e) {
             if (e instanceof ProviderError && e.billed === false) ledger.settle(entry, 0);
