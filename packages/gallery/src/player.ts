@@ -131,21 +131,29 @@ function launch(): void {
 }
 
 /**
- * 目録（親の窓）から送られてくるキー。
+ * 目録（親の窓）から送られてくる知らせ。
  *
- * エンジンはこの窓の keydown を聞いている。焦点が目録の側にあるときは、
- * そちらにしか届かない。だから目録が遊びのキーだけを転送してくる。
- * 焦点がこちらにあるときは、目録には何も届かないので重ならない。
+ * key はキーの上げ下げ。エンジンはこの窓の keydown を聞いているが、焦点が
+ * 目録の側にあるときは、そちらにしか届かない。だから目録が遊びのキーだけを
+ * 転送してくる。焦点がこちらにあるときは、目録には何も届かないので重ならない。
+ *
+ * audio は「音を起こせ」。エンジンは音を止めたまま起動し、自分の窓が触られた
+ * ときに鳴らし始める。この窓は iframe の中なので、触られるのは目録のカードで
+ * あって、ここではない。触られたことにして、エンジン自身の手で起こさせる。
+ * 入力にはならない（作品の指先は canvas の上の出来事だけを見ている）。
  */
 window.addEventListener("message", event => {
     if (event.origin !== location.origin) return;
     const data = event.data as { fanm?: unknown; code?: unknown; down?: unknown };
+    if (data?.fanm === "audio") return void window.dispatchEvent(new Event("pointerdown"));
     if (data?.fanm !== "key" || typeof data.code !== "string") return;
     runtime?.input.setKey(data.code, data.down === true);
 });
 
-// 画面を触られたら、以後のキーはこちらで受ける。
-window.addEventListener("pointerdown", () => window.focus());
+// 画面を触られたら、以後のキーはこちらで受ける。音を起こすために目録が
+// 投げてくる偽の pointerdown では動かさない。焦点まで持ってくると、目録の
+// 押しどころを触っただけで指の行き先が変わってしまう。
+window.addEventListener("pointerdown", event => { if (event.isTrusted) window.focus(); });
 
 button.addEventListener("click", () => {
     crt = !crt;

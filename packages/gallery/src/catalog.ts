@@ -12,6 +12,11 @@
 // 作品は増えていくばかりなので、一覧は最初の何枚かだけ並べ、あとは
 // 「もっと見る」で継ぎ足す。名前で直に呼ばれた作品がまだ並んでいなければ、
 // そこまで並べてから再生する。
+//
+// 音も iframe の中で鳴る。iPhone は人が触るまで音を出させず、その「触った」は
+// 作品の窓には起きない（触られているのは目録のカードで、作品の窓ではない）。
+// そこでカードを押したその場で、目録の側が無音を一つ鳴らして頁の錠を外し、
+// 作品の窓には「起きろ」とだけ伝える。
 
 import type { CatalogEntry } from "./catalog-entry.js";
 
@@ -30,6 +35,34 @@ const PLAY_KEYS = new Set([
     "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "KeyZ", "KeyX",
     "KeyW", "KeyA", "KeyS", "KeyD", "KeyN", "KeyM"
 ]);
+
+/**
+ * 頁の音の錠を外す。人が触っているあいだに呼ぶこと。
+ *
+ * 一標本ぶんの無音を鳴らすだけ。何が鳴るかは問題ではなく、人の身振りの中で
+ * 一度でも鳴らしたという事実が要る。外れた錠は同じ頁の iframe にも効く。
+ */
+let wakeup: AudioContext | null = null;
+function unlock(): void {
+    try {
+        const sound = (wakeup ??= new AudioContext());
+        void sound.resume();
+        const silence = sound.createBufferSource();
+        silence.buffer = sound.createBuffer(1, 1, sound.sampleRate);
+        silence.connect(sound.destination);
+        silence.start();
+    } catch {
+        // 音を出せない閲覧環境。絵だけ見てもらう。
+    }
+}
+
+/**
+ * 作品の音を起こす。錠が外れていても、エンジンは自分の窓が触られるまで
+ * 音を止めたままなので、こちらから起こしてやる必要がある。
+ */
+function wake(): void {
+    frame?.contentWindow?.postMessage({ fanm: "audio" }, location.origin);
+}
 
 /** 目録の側で押されたまま送ったキー。焦点が外れたときに離してやる。 */
 const forwarded = new Set<string>();
@@ -50,8 +83,14 @@ function play(entry: CatalogEntry): void {
     next.allow = "autoplay";
     next.src = `play.html?work=${encodeURIComponent(entry.id)}`;
     // 読み込み終わってから焦点を移す。ここで移さないと、カードを押した指の
-    // 行き先は目録のボタンのままで、矢印キーは目録を送るだけになる。
-    next.addEventListener("load", () => next.contentWindow?.focus());
+    // 行き先は目録のボタンのままで、矢印キーは目録を送るだけになる。音も
+    // このときに起こす。作品はもう動いていて、あとは鳴るのを待つだけ。
+    next.addEventListener("load", () => {
+        next.contentWindow?.focus();
+        wake();
+    });
+    // 押された指がまだ画面にあるうちに外す。後から外そうとしても遅い。
+    unlock();
     releaseForwarded();
     frame?.remove();
     frame = next;
@@ -62,6 +101,10 @@ function play(entry: CatalogEntry): void {
         : entry.title;
     stage.append(next);
     location.hash = entry.id;
+    // 押したカードは一覧の下の方にあることが多い。舞台は画面の外なので、
+    // 運んでやらないと切り替わったことが伝わらない。ハッシュを書いたあとに
+    // 動かす。行き先のない名前でも、位置を決めるのは browser が先になる。
+    stage.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 /** 再生をやめて一覧だけに戻す。iframe を捨てるので音も止まる。 */
@@ -87,6 +130,13 @@ for (const [type, down] of [["keydown", true], ["keyup", false]] as const) {
 
 // 窓から出たまま押されていたキーは、押しっぱなしとして残ってしまう。
 window.addEventListener("blur", releaseForwarded);
+
+// 最初の一押しで錠が外れなかったとき（作品を開く前に押されていた場合など）の
+// 取り返し。目録の側が触られるたびに外し直して、鳴っていなければ起こす。
+window.addEventListener("pointerdown", () => {
+    unlock();
+    wake();
+});
 
 // createdAt は ISO 8601。閲覧者の暦で時刻まで表示する。UTC で保存されているので、タイムゾーンの差を吸収してくれる。
 function date(iso: string): string {
