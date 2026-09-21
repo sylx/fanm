@@ -208,6 +208,10 @@ function card(entry: CatalogEntry): HTMLLIElement {
     image.src = entry.thumb;
     image.alt = "";
     image.loading = "lazy";
+    // ブラウン管の走査線を重ねるための枠。
+    const screen = document.createElement("span");
+    screen.className = "crt";
+    screen.append(image);
     const title = document.createElement("strong");
     title.textContent = entry.title;
     const description = document.createElement("span");
@@ -226,7 +230,7 @@ function card(entry: CatalogEntry): HTMLLIElement {
         model.textContent = entry.model;
         foot.append(model);
     }
-    button.append(image, title, description, foot);
+    button.append(screen, title, description, foot);
     // 人が自分で選んだら、くじはもう要らない。
     button.addEventListener("click", () => {
         stopShuffle();

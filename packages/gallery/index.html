@@ -37,8 +37,27 @@
             background: none; border: 1px solid var(--line); border-radius: 6px;
             padding: 8px; color: inherit; font: inherit; }
     .card:hover, .card:focus-visible { border-color: var(--fg); }
-    .card img { width: 100%; aspect-ratio: 4 / 3; object-fit: contain; display: block;
-                background: #000; border-radius: 3px; }
+    /* 昔のゲーム雑誌の画面写真のように、ブラウン管を撮ったぼやけた絵にする。
+       絵そのものは少しにじませて明るく色を濃くし、上に走査線と周辺の減光を
+       重ねる。img には疑似要素が付かないので、枠の span に重ねる。 */
+    .card .crt { position: relative; display: block; overflow: hidden;
+                 aspect-ratio: 4 / 3; background: #000; border-radius: 8px / 10px; }
+    .card .crt img { width: 100%; height: 100%; object-fit: contain; display: block;
+                     filter: blur(.7px) brightness(1.15) contrast(1.2) saturate(1.35);
+                     transform: scale(1.02); }
+    .card .crt::before, .card .crt::after { content: ""; position: absolute; inset: 0;
+                                            pointer-events: none; }
+    .card .crt::before {
+      background: repeating-linear-gradient(to bottom,
+        rgba(0, 0, 0, 0) 0, rgba(0, 0, 0, 0) 1px, rgba(0, 0, 0, .28) 2px, rgba(0, 0, 0, 0) 3px);
+    }
+    .card .crt::after {
+      background:
+        radial-gradient(ellipse at 30% 22%, rgba(255, 255, 255, .10), rgba(255, 255, 255, 0) 40%),
+        radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 55%, rgba(0, 0, 0, .55) 100%);
+      box-shadow: inset 0 0 18px rgba(0, 0, 0, .7);
+      border-radius: inherit;
+    }
     .card strong { font-weight: 600; letter-spacing: .08em; }
     .card span { color: var(--dim); font-size: 13px; }
     /* 最後の行。日付は左、書いたAIの名前は右。名前が長いときは字を詰める
@@ -56,7 +75,7 @@
       ul { grid-template-columns: 1fr; gap: 12px; }
       .card { grid-template-columns: 104px 1fr; grid-template-rows: auto 1fr auto;
               column-gap: 10px; }
-      .card img { grid-column: 1; grid-row: 1 / -1; align-self: start; }
+      .card .crt { grid-column: 1; grid-row: 1 / -1; align-self: start; }
       .card strong, .card span, .card .foot { grid-column: 2; }
     }
     /* 継ぎ足しの押しどころ。並べ終えたら隠れるので、余白ごと畳まれるよう
