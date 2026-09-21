@@ -121,9 +121,11 @@ function stop(): void {
 for (const [type, down] of [["keydown", true], ["keyup", false]] as const) {
     window.addEventListener(type, event => {
         const key = event as KeyboardEvent;
-        if (!frame || key.repeat || key.ctrlKey || key.metaKey || key.altKey) return;
+        if (!frame || key.ctrlKey || key.metaKey || key.altKey) return;
         if (!PLAY_KEYS.has(key.code)) return;
-        send(key.code, down);
+        // 押しっぱなしの繰り返しは作品へは送らない（作品が自分で繰り返す）が、
+        // 止めるのは止める。見逃すと矢印を押し続けたとき頁が送られてしまう。
+        if (!key.repeat) send(key.code, down);
         key.preventDefault();
     });
 }
