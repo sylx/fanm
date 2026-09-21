@@ -12,7 +12,7 @@ if (existsSync(".env")) process.loadEnvFile(".env");
 
 /** 頼む相手ひとり。札束の一枚（providers/deck.ts）。 */
 export interface ProviderConfig {
-    readonly name: "deepseek" | "claude" | "fake";
+    readonly name: "deepseek" | "claude" | "openai" | "fake";
     readonly model: string;
     /** 引かれやすさ。大きいほどよく当たる。0 なら引かない（札束に残したまま休ませる）。省くと 1。 */
     readonly share?: number;

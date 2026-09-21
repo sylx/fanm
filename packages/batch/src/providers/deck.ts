@@ -15,6 +15,7 @@ import type { ProviderConfig } from "../config.js";
 import { Claude, CLAUDE_API_KEY_ENV, CLAUDE_MODELS } from "./claude.js";
 import { DeepSeek, DEEPSEEK_API_KEY_ENV, DEEPSEEK_MODELS } from "./deepseek.js";
 import { FakeProvider } from "./fake.js";
+import { OPENAI_API_KEY_ENV, OPENAI_MODELS, OpenAIProvider } from "./openai.js";
 import type { Provider } from "./provider.js";
 
 /** 偽のAIだけの札束。--fake のときは設定の札束を使わない。 */
@@ -61,25 +62,34 @@ export function deckNamed(deck: readonly ProviderConfig[], wanted: string): read
     return found.length ? found : undefined;
 }
 
+/** 事業者ごとの既定の鍵の在り処と、単価の分かっているモデル。 */
+const VENDORS = {
+    deepseek: { env: DEEPSEEK_API_KEY_ENV, models: DEEPSEEK_MODELS },
+    claude: { env: CLAUDE_API_KEY_ENV, models: CLAUDE_MODELS },
+    openai: { env: OPENAI_API_KEY_ENV, models: OPENAI_MODELS }
+} as const;
+
 /**
  * 単価表に無い相手。鍵が要らないので、手元から本番へ設定を送る前の点検に使う
  * （scripts/conf-push.sh）。verifyDeck は鍵も見るが、そちらは動かす側の話。
  */
 export function unknownModels(deck: readonly ProviderConfig[]): string[] {
     const known = (entry: ProviderConfig) =>
-        entry.name === "fake" || (entry.name === "claude" ? CLAUDE_MODELS : DEEPSEEK_MODELS).includes(entry.model);
+        entry.name === "fake" || VENDORS[entry.name].models.includes(entry.model);
     return deck.filter(e => !known(e)).map(e => `${e.name} / ${e.model}`);
 }
 
 /** 札を実際の接続にする。鍵が無ければここで止まる。 */
 export function createProvider(entry: ProviderConfig): Provider {
     if (entry.name === "fake") return new FakeProvider(entry.model);
-    const env = entry.apiKeyEnv ?? (entry.name === "claude" ? CLAUDE_API_KEY_ENV : DEEPSEEK_API_KEY_ENV);
+    const env = entry.apiKeyEnv ?? VENDORS[entry.name].env;
     const key = process.env[env];
     if (!key) throw new Error(`環境変数 ${env} に APIキーがない（${entry.name} ${entry.model}）`);
-    return entry.name === "claude"
-        ? new Claude(entry.model, key, entry.baseUrl)
-        : new DeepSeek(entry.model, key, entry.baseUrl);
+    switch (entry.name) {
+        case "claude": return new Claude(entry.model, key, entry.baseUrl);
+        case "openai": return new OpenAIProvider(entry.model, key, entry.baseUrl);
+        case "deepseek": return new DeepSeek(entry.model, key, entry.baseUrl);
+    }
 }
 
 /**

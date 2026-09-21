@@ -9,7 +9,8 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",
-    "@fanm/work": "*"
+    "@fanm/work": "*",
+    "openai": "^7.20.0"
   },
   "devDependencies": {
     "esbuild": "^0.28.2"

@@ -146,6 +146,7 @@ APIキーを入れる環境変数は事業者ごとに決まっていて、設�
 | --- | --- | --- | --- |
 | DeepSeek | `deepseek` | `deepseek-v4-pro`、`deepseek-flash` | `DEEPSEEK_API_KEY` |
 | Claude | `claude` | `claude-opus-5`、`claude-opus-4-8`、`claude-sonnet-5` | `ANTHROPIC_API_KEY` |
+| OpenAI | `openai` | `gpt-6-astra`、`gpt-5.6-sol`、`gpt-5.6-terra`、`gpt-5.6-luna`、`gpt-5.5` | `OPENAI_API_KEY` |
 
 一人だけに頼むなら、札を一枚だけ書く。
 
@@ -215,7 +216,7 @@ fanM も fantasy-msx も公開リポジトリなので、Coolify の **Public Re
 
     | 名前 | 中身 |
     | --- | --- |
-    | `DEEPSEEK_API_KEY` | AIのAPIキー。無いと起動しない（Claude に替えたなら代わりに `ANTHROPIC_API_KEY`） |
+    | `DEEPSEEK_API_KEY` | AIのAPIキー。無いと起動しない（Claude なら `ANTHROPIC_API_KEY`、OpenAI なら `OPENAI_API_KEY`。札束にいる相手のぶんだけ要る） |
     | `CLOUDFLARE_API_TOKEN` | 公開用（[docs/deploy.md](deploy.md)） |
     | `CLOUDFLARE_ACCOUNT_ID` | 同上 |
     | `FANM_NOTIFY_WEBHOOK` | 知らせ先。無くてもよい |
