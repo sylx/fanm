@@ -203,6 +203,7 @@ npm run overlap               # 採用作が実例や過去作をどれだけ写
 npm run make -- --form rpg    # 型を指定して一作品作る（手元で一つの型を試すとき）
 scripts/fanm-pull.sh -n       # 本番（chevron）の作品と使用額を手元へ引き取る（-n は見るだけ）
 scripts/conf-push.sh -n       # 手元の config/fanm.json を本番へ送る（-n は見るだけ）
+scripts/fanm-shell.sh         # 本番のバッチのコンテナに入る（fanm status のように続ければそれだけ動かす）
 ```
 
 Cloudflareへの公開（`npm run publish`）には `CLOUDFLARE_API_TOKEN` と `CLOUDFLARE_ACCOUNT_ID` が要ります。[docs/deploy.md](docs/deploy.md) を参照してください。

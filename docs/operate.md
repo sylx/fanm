@@ -372,3 +372,16 @@ scripts/conf-push.sh 別の.json  # 送るファイルを指定する
 | `人の対応が必要: 公開できない` | Cloudflare の鍵か権限 | [docs/deploy.md](deploy.md) の手順で作り直す |
 | `目印は…、古い` | 固まっている | コンテナを再起動する。ジョブは続きから進む |
 | `想定外の失敗` が続く | ログに残る | `<VAR>/run.log` の該当箇所を見る。間を置いて再試行は続いている |
+
+## 本番のコンテナに入る
+
+中をのぞくだけなら `scripts/fanm-shell.sh`。chevron に ssh し、動いているバッチのコンテナで bash を開く。コンテナは他の道具と同じく、`fanm-var` のボリュームを繋いだものを探すので、再デプロイで名前が変わっても気にしなくてよい。
+
+```bash
+scripts/fanm-shell.sh                       # 中で bash を開く（node で入る）
+scripts/fanm-shell.sh fanm status           # 一つだけ動かして戻る
+scripts/fanm-shell.sh tail -f /data/run.log
+scripts/fanm-shell.sh --root                # root で入る
+```
+
+中では `fanm` が関数として使える（イメージに `fanm` のリンクは無い）。`--remote` `--volume` `--container` と環境変数は他の道具と同じ。
