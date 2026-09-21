@@ -17,11 +17,14 @@
 // 作品の窓には起きない（触られているのは目録のカードで、作品の窓ではない）。
 // そこでカードを押したその場で、目録の側が無音を一つ鳴らして頁の錠を外し、
 // 作品の窓には「起きろ」とだけ伝える。
+//
+// ランダム再生は入り切りのある状態。入れているあいだは一定の間隔で次の作品を
+// くじで選んで流し続ける。人がカードを選んだり一覧に戻ったりしたら切れる。
 
 import type { CatalogEntry } from "./catalog-entry.js";
 
 const list = document.querySelector("#catalog") as HTMLUListElement;
-const random = document.querySelector("#random") as HTMLAnchorElement;
+const random = document.querySelector("#random") as HTMLButtonElement;
 const stage = document.querySelector("#stage") as HTMLElement;
 const empty = document.querySelector("#empty") as HTMLElement;
 const close = document.querySelector("#close") as HTMLAnchorElement;
@@ -77,7 +80,19 @@ function releaseForwarded(): void {
     for (const code of [...forwarded]) send(code, false);
 }
 
-function play(entry: CatalogEntry): void {
+/** ランダム再生で一つの作品を流す長さ。 */
+const SHUFFLE_MS = 60_000;
+
+/** ランダム再生の次の切り替え。切っているあいだは null。 */
+let shuffle: number | null = null;
+
+/**
+ * 再生の仕方。auto はランダム再生が自分で次へ送ったときで、人は画面の
+ * どこかを見ているかもしれない。だから頁を動かさず、履歴も積まない。
+ */
+interface PlayOptions { auto?: boolean }
+
+function play(entry: CatalogEntry, { auto = false }: PlayOptions = {}): void {
     const next = document.createElement("iframe");
     next.title = entry.title;
     next.allow = "autoplay";
@@ -85,8 +100,11 @@ function play(entry: CatalogEntry): void {
     // 読み込み終わってから焦点を移す。ここで移さないと、カードを押した指の
     // 行き先は目録のボタンのままで、矢印キーは目録を送るだけになる。音も
     // このときに起こす。作品はもう動いていて、あとは鳴るのを待つだけ。
+    // ランダム再生が勝手に送ったときは、焦点が作品にあった場合だけ移す。
+    // 人が一覧を見ているさなかに焦点を奪うと、頁が作品の方へ引き戻される。
+    const focus = !auto || document.activeElement === frame;
     next.addEventListener("load", () => {
-        next.contentWindow?.focus();
+        if (focus) next.contentWindow?.focus();
         wake();
     });
     // 押された指がまだ画面にあるうちに外す。後から外そうとしても遅い。
@@ -100,6 +118,13 @@ function play(entry: CatalogEntry): void {
         ? `${entry.title} — ${entry.controls}`
         : entry.title;
     stage.append(next);
+    // ランダム再生中なら、いま流し始めた作品から数え直す。
+    if (shuffle !== null) schedule();
+    if (auto) {
+        // hashchange は起きないが、起きても同じ作品なので何もしない。
+        history.replaceState(null, "", `#${encodeURIComponent(entry.id)}`);
+        return;
+    }
     location.hash = entry.id;
     // 押したカードは一覧の下の方にあることが多い。舞台は画面の外なので、
     // 運んでやらないと切り替わったことが伝わらない。ハッシュを書いたあとに
@@ -107,8 +132,37 @@ function play(entry: CatalogEntry): void {
     stage.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
+/** ランダム再生の次の切り替えを、いまから SHUFFLE_MS 後に置き直す。 */
+function schedule(): void {
+    if (shuffle !== null) clearTimeout(shuffle);
+    shuffle = window.setTimeout(() => shuffleNext(true), SHUFFLE_MS);
+}
+
+/** くじで一つ選んで流す。いま流れている作品は、ほかがあるかぎり引かない。 */
+function shuffleNext(auto: boolean): void {
+    const pool = works.length > 1 ? works.filter(work => work.id !== playing?.id) : works;
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    if (!auto) reveal(works.indexOf(pick) + 1);
+    play(pick, { auto });
+}
+
+function startShuffle(): void {
+    random.setAttribute("aria-pressed", "true");
+    random.textContent = "ランダム再生中";
+    schedule();
+    shuffleNext(false);
+}
+
+function stopShuffle(): void {
+    if (shuffle !== null) clearTimeout(shuffle);
+    shuffle = null;
+    random.setAttribute("aria-pressed", "false");
+    random.textContent = "ランダム再生";
+}
+
 /** 再生をやめて一覧だけに戻す。iframe を捨てるので音も止まる。 */
 function stop(): void {
+    stopShuffle();
     forwarded.clear();
     frame?.remove();
     frame = null;
@@ -173,7 +227,11 @@ function card(entry: CatalogEntry): HTMLLIElement {
         foot.append(model);
     }
     button.append(image, title, description, foot);
-    button.addEventListener("click", () => play(entry));
+    // 人が自分で選んだら、くじはもう要らない。
+    button.addEventListener("click", () => {
+        stopShuffle();
+        play(entry);
+    });
     item.append(button);
     return item;
 }
@@ -216,11 +274,9 @@ if (!works.length) {
     reveal();
     more.addEventListener("click", () => reveal());
     random.hidden = false;
-    random.addEventListener("click", event => {
-        event.preventDefault();
-        const at = Math.floor(Math.random() * works.length);
-        reveal(at + 1);
-        play(works[at]);
+    random.addEventListener("click", () => {
+        if (shuffle !== null) stopShuffle();
+        else startShuffle();
     });
 
     close.addEventListener("click", event => {

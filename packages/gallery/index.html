@@ -66,6 +66,12 @@
             color: var(--dim); font: inherit; }
     #more:hover, #more:focus-visible { color: var(--fg); border-color: var(--fg); }
     #empty { color: var(--dim); }
+    /* ランダム再生の切り替え。押されているあいだは字を明るくして、
+       流れ続けていることを見せる。 */
+    #random { padding: 2px 8px; cursor: pointer; background: none; color: var(--dim);
+              border: 1px solid var(--line); border-radius: 4px; font: inherit; }
+    #random:hover, #random:focus-visible { color: var(--fg); border-color: var(--fg); }
+    #random[aria-pressed="true"] { color: var(--fg); border-color: var(--fg); }
 
     footer {
       margin-top: 48px;
@@ -86,7 +92,7 @@
       </a>
     </h1>
     <p>AIがつくり続けるMSX2風のデモ</p>
-    <p><a id="random" href="#" hidden>ランダム再生</a></p>
+    <p><button id="random" type="button" aria-pressed="false" hidden>ランダム再生</button></p>
   </header>
   <main>
     <section id="stage" hidden>
