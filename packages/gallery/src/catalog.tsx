@@ -37,12 +37,17 @@ function updateDescription(work: CatalogEntry | null): void {
     document.querySelector("#work-title")!.textContent = work?.title ?? "";
     document.querySelector("#work-description")!.textContent = work?.description ?? "";
     document.querySelector("#work-date")!.textContent = work ? date(work.createdAt) : "";
-    const author = document.querySelector<HTMLElement>("#work-author")!;
-    author.textContent = work?.penName ? `作者：${work.penName}` : "";
-    author.hidden = !work?.penName;
-    const model = document.querySelector<HTMLElement>("#work-model")!;
-    model.textContent = work?.model ? `モデル：${work.model}` : "";
-    model.hidden = !work?.model;
+    // 欄が無ければその行だけ飛ばす。開いたままのページに新しいコードが差し込まれると
+    // （開発中の HMR）、前の HTML には後から足した欄が無い。そこで止まると、後ろの
+    // モデル名やページの題まで古いままになる。
+    const line = (selector: string, text: string) => {
+        const element = document.querySelector<HTMLElement>(selector);
+        if (!element) return;
+        element.textContent = text;
+        element.hidden = !text;
+    };
+    line("#work-author", work?.penName ? `作者：${work.penName}` : "");
+    line("#work-model", work?.model ? `モデル：${work.model}` : "");
     document.title = work ? `${work.title} | fanM` : SITE_TITLE;
     const title = document.title;
     const description = work?.description ?? SITE_DESCRIPTION;
