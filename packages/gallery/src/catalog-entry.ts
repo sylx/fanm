@@ -14,6 +14,7 @@ export interface CatalogItem {
     readonly title: string;
     readonly createdAt: string;
     readonly model?: string;
+    readonly penName?: string;
     readonly chunk: string;
 }
 

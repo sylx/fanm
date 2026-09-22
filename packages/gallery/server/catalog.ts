@@ -15,8 +15,8 @@ export function catalogFiles(entries: readonly CatalogEntry[]): { index: Catalog
         files.set(chunk, body);
         for (const entry of group) {
             files.set(`/works/${entry.id}/meta.json`, JSON.stringify(entry));
-            const { id, title, createdAt, model } = entry;
-            items.push({ id, title, createdAt, model, chunk });
+            const { id, title, createdAt, model, penName } = entry;
+            items.push({ id, title, createdAt, model, penName, chunk });
         }
     }
     items.reverse();

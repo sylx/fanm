@@ -51,12 +51,13 @@ ul { list-style: none; display: grid; gap: 16px; padding: 0; margin: 0;
 .card strong { font-weight: 600; letter-spacing: .08em; }
 .card span { color: var(--dim); font-size: 13px; }
 /* 最後の行。日付は左、書いたAIの名前は右。名前が長いときは字を詰める
-   ばかりで、日付を押し出さない。 */
+   ばかりで、日付を押し出さない。作者のペンネームがあればモデル名の上に置く。 */
 .card .foot { display: flex; align-items: baseline; justify-content: space-between;
               gap: 8px; color: var(--dim); font-size: 12px; padding-top: 4px; }
 .card time { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .card .model { font-size: 11px; letter-spacing: .04em; text-align: right;
                overflow-wrap: anywhere; }
+.card .pen { display: block; font-weight: 600; font-size: 12px; color: var(--fg); }
 /* iPhone のような細い画面では升目が一列きりになり、絵を字の上に敷くと
    一枚で画面がほとんど埋まってしまう。絵を小さくして左へ寄せ、字をその
    右に回り込ませて、一枚あたりの縦を詰める。絵は行をまたいで立てに通し、

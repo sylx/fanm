@@ -37,6 +37,9 @@ function updateDescription(work: CatalogEntry | null): void {
     document.querySelector("#work-title")!.textContent = work?.title ?? "";
     document.querySelector("#work-description")!.textContent = work?.description ?? "";
     document.querySelector("#work-date")!.textContent = work ? date(work.createdAt) : "";
+    const author = document.querySelector<HTMLElement>("#work-author")!;
+    author.textContent = work?.penName ? `作者：${work.penName}` : "";
+    author.hidden = !work?.penName;
     const model = document.querySelector<HTMLElement>("#work-model")!;
     model.textContent = work?.model ? `モデル：${work.model}` : "";
     model.hidden = !work?.model;
@@ -81,7 +84,7 @@ function App() {
     const oldest = params.get("order") === "oldest";
     const requestedPage = Math.max(1, Math.floor(Number(params.get("page")) || 1));
     const filtered = useMemo(() => {
-        const result = index?.items.filter(item => (!month || item.createdAt.startsWith(month)) && (!query || `${item.title} ${item.model ?? ""}`.toLocaleLowerCase().includes(query.toLocaleLowerCase()))) ?? [];
+        const result = index?.items.filter(item => (!month || item.createdAt.startsWith(month)) && (!query || `${item.title} ${item.penName ?? ""} ${item.model ?? ""}`.toLocaleLowerCase().includes(query.toLocaleLowerCase()))) ?? [];
         return oldest ? result.reverse() : result;
     }, [index, month, query, oldest]);
     const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -278,7 +281,7 @@ function App() {
             <h2 id="catalog-heading">{route.id ? "ほかの作品" : "作品一覧"}</h2>
             <div className="top-toolbar">
                 <div className="filters">
-                    <label>作品を検索<input type="search" value={query} placeholder="タイトル・モデル名" onChange={event => changeFilter("q", event.target.value)} /></label>
+                    <label>作品を検索<input type="search" value={query} placeholder="タイトル・作者・モデル名" onChange={event => changeFilter("q", event.target.value)} /></label>
                     <label>公開月<select value={month} onChange={event => changeFilter("month", event.target.value)}><option value="">すべて</option>{months.map(value => <option key={value}>{value}</option>)}</select></label>
                     <label>並び順<select value={oldest ? "oldest" : "newest"} onChange={event => changeFilter("order", event.target.value)}><option value="newest">新しい順</option><option value="oldest">古い順</option></select></label>
                 </div>
@@ -294,7 +297,7 @@ function App() {
                 <a className="card" data-work={entry.id} aria-current={entry.id === route.id ? "true" : undefined} href={workURL(entry.id) + route.search} onClick={event => link(event, entry.id)}>
                     <span className="crt"><img src={entry.thumb} alt="" loading="lazy" /></span>
                     <strong>{entry.title}</strong><span>{entry.description}</span>
-                    <small className="foot"><time dateTime={entry.createdAt}>{date(entry.createdAt)}</time>{entry.model && <span className="model">{entry.model}</span>}</small>
+                    <small className="foot"><time dateTime={entry.createdAt}>{date(entry.createdAt)}</time>{entry.model && <span className="model">{entry.penName && <b className="pen">{entry.penName}</b>}{entry.model}</span>}</small>
                 </a>
             </li>)}</ul>}
             <nav className="pagination" aria-label="作品一覧のページ">

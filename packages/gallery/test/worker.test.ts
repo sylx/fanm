@@ -97,3 +97,11 @@ test("HTMLキャッシュは公開版ごとに分離し、ブラウザには再�
         else Reflect.deleteProperty(globalThis, "caches");
     }
 });
+
+test("作者のペンネームは作品HTMLと索引に載り、無い作品では隠す", () => {
+    const authored = { ...entry, model: "claude-opus-5", penName: "Golden<Snail>" };
+    const html = renderWork(shell, authored);
+    assert.ok(html.includes('<p id="work-author">作者：Golden&lt;Snail&gt;</p>'));
+    assert.ok(renderWork(shell, entry).includes('<p id="work-author" hidden></p>'));
+    assert.equal(catalogFiles([authored]).index.items[0].penName, "Golden<Snail>");
+});
