@@ -37,7 +37,8 @@ export function renderWork(html: string, entry: CatalogEntry | null): string {
             `<meta name="twitter:image" content="${escapeHTML(image)}">`
         ] : ['<meta name="robots" content="noindex">'])
     ].join("\n");
-    const summary = `<section id="work-info"><h2 id="work-title">${escapeHTML(entry?.title ?? "作品が見つかりません")}</h2><p id="work-description">${escapeHTML(description)}</p><p id="work-date">${escapeHTML(entry?.createdAt ?? "")}</p></section>`;
+    const model = entry?.model ? `モデル：${escapeHTML(entry.model)}` : "";
+    const summary = `<section id="work-info"><h2 id="work-title">${escapeHTML(entry?.title ?? "作品が見つかりません")}</h2><p id="work-description">${escapeHTML(description)}</p><div class="work-meta"><p id="work-date">${escapeHTML(entry?.createdAt ?? "")}</p><p id="work-model"${model ? "" : " hidden"}>${model}</p></div></section>`;
     // script の終端や HTML として解釈される文字を JSON 内に残さない。
     const bootstrap = JSON.stringify(entry).replace(/</g, "\\u003c");
     return html.replace("</head>", () => `${meta}\n</head>`)

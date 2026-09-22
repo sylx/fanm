@@ -10,7 +10,7 @@ h1 img { height: 34px; width: auto; display: block; }
 header p { color: var(--dim); margin: 0; font-size: 13px; }
 a { color: inherit; }
 main { max-width: 1100px; margin: 0 auto; }
-#stage { margin: 0 0 32px; }
+#stage { margin: 0 0 16px; }
 /* VDP の一画面は 272x228。同じ比にしておくと、プレイヤーが整数倍で
    出したときの余白が最小で済む。 */
 #stage iframe { width: min(100%, 818px); aspect-ratio: 272 / 228; margin: 0 auto;
@@ -86,11 +86,29 @@ footer {
 }
 
 [hidden] { display: none !important; }
+#work-info { 
+   width: min(100%, 818px);
+   margin-inline: auto;
+   margin-bottom: 32px;
+}
 #work-info h2 { margin-bottom: 4px; font-size: 22px; }
 #work-description { max-width: 72ch; margin-top: 0; }
-#work-date { color: var(--dim); font-size: 13px; }
+.work-meta { display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--dim); font-size: 13px; }
+.work-meta p { margin: 0; overflow-wrap: anywhere; }
 .toolbar, .filters, .pagination, .player-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 16px 0; }
+.player-actions { justify-content: space-between; }
+.top-toolbar {
+   display: flex;
+   justify-content: space-between;
+   align-items: flex-end;
+}
+@media (max-width: 640px) {
+  .top-toolbar { flex-direction: column; align-items: stretch; gap: 0; }
+  .top-toolbar .filters { margin-block: 0; }
+  .top-toolbar .pageination { margin-block: 0; }
+}
 .filters label { display: grid; gap: 4px; font-size: 13px; color: var(--dim); }
+.filters input[type="search"] { width: max(20vw, 100px); }
 .filters input, .filters select, .pagination button, .toolbar button, .player-actions a, .player-actions button { background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 4px; padding: 8px 12px; font: inherit; }
 button { cursor: pointer; }
 button:disabled { cursor: default; opacity: .4; }
@@ -101,5 +119,4 @@ button:disabled { cursor: default; opacity: .4; }
 .status { color: var(--dim); }
 .error { color: #ffb5ad; }
 #stage { scroll-margin-top: 16px; }
-#stage iframe { max-height: 80vh; }
 #catalog-region { scroll-margin-top: 16px; }

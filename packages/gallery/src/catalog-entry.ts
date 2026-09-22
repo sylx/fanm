@@ -22,5 +22,5 @@ export interface CatalogIndex {
     readonly items: readonly CatalogItem[];
 }
 
-export const PAGE_SIZE = 24;
+export const PAGE_SIZE = 16;
 export const workURL = (id: string): string => `/work/${encodeURIComponent(id)}/`;

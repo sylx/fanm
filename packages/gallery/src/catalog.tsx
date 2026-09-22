@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { createRoot } from "react-dom/client";
+import { createPortal } from "react-dom";
 import { PAGE_SIZE, workURL, type CatalogEntry, type CatalogIndex } from "./catalog-entry.js";
 import { ORIGIN, SITE_DESCRIPTION, SITE_TITLE } from "../worker/render.js";
 
@@ -36,6 +37,9 @@ function updateDescription(work: CatalogEntry | null): void {
     document.querySelector("#work-title")!.textContent = work?.title ?? "";
     document.querySelector("#work-description")!.textContent = work?.description ?? "";
     document.querySelector("#work-date")!.textContent = work ? date(work.createdAt) : "";
+    const model = document.querySelector<HTMLElement>("#work-model")!;
+    model.textContent = work?.model ? `モデル：${work.model}` : "";
+    model.hidden = !work?.model;
     document.title = work ? `${work.title} | fanM` : SITE_TITLE;
     const title = document.title;
     const description = work?.description ?? SITE_DESCRIPTION;
@@ -247,6 +251,7 @@ function App() {
     }, [shuffle, work?.id, index, route.search]);
 
     return <>
+        {createPortal(<>
         <div className="toolbar">
             <button id="random" disabled={!index?.items.length} aria-pressed={shuffle} onClick={() => {
                 unlock();
@@ -268,12 +273,20 @@ function App() {
                 }} />
             </> : <p role="status">作品を読み込んでいます…</p>}
         </section>}
+        </>, document.querySelector("#player")!)}
         <section id="catalog-region" ref={gallery} aria-labelledby="catalog-heading">
             <h2 id="catalog-heading">{route.id ? "ほかの作品" : "作品一覧"}</h2>
-            <div className="filters">
-                <label>作品を検索<input type="search" value={query} placeholder="タイトル・モデル名" onChange={event => changeFilter("q", event.target.value)} /></label>
-                <label>公開月<select value={month} onChange={event => changeFilter("month", event.target.value)}><option value="">すべて</option>{months.map(value => <option key={value}>{value}</option>)}</select></label>
-                <label>並び順<select value={oldest ? "oldest" : "newest"} onChange={event => changeFilter("order", event.target.value)}><option value="newest">新しい順</option><option value="oldest">古い順</option></select></label>
+            <div className="top-toolbar">
+                <div className="filters">
+                    <label>作品を検索<input type="search" value={query} placeholder="タイトル・モデル名" onChange={event => changeFilter("q", event.target.value)} /></label>
+                    <label>公開月<select value={month} onChange={event => changeFilter("month", event.target.value)}><option value="">すべて</option>{months.map(value => <option key={value}>{value}</option>)}</select></label>
+                    <label>並び順<select value={oldest ? "oldest" : "newest"} onChange={event => changeFilter("order", event.target.value)}><option value="newest">新しい順</option><option value="oldest">古い順</option></select></label>
+                </div>
+                <nav className="pagination" aria-label="作品一覧のページ">
+                    <button disabled={page <= 1 || loading} onClick={() => changeFilter("page", String(page - 1))}>前のページ</button>
+                    <span>{page} / {pages}</span>
+                    <button disabled={page >= pages || loading} onClick={() => changeFilter("page", String(page + 1))}>次のページ</button>
+                </nav>
             </div>
             <p className="status" aria-live="polite">{index ? `${filtered.length} 作品・${page} / ${pages} ページ` : "一覧を読み込んでいます…"}</p>
             {error && <p className="error" role="alert">{error} <button onClick={() => { chunks.clear(); setRetry(value => value + 1); }}>再読み込み</button></p>}
