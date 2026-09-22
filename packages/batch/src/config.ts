@@ -67,8 +67,6 @@ export interface Config {
         readonly wranglerConfig: string;
         readonly apiTokenEnv: string;
         readonly accountIdEnv: string;
-        /** 公開の間隔（時間）。制作より粗くして、溜まった作品をまとめて出す。 */
-        readonly everyHours: number;
         /** 公開したあとの居場所。知らせに貼るリンクに使うだけで、送り先は wrangler.jsonc が決める。 */
         readonly siteUrl: string;
     };
@@ -95,7 +93,6 @@ export const DEFAULTS: Config = {
         wranglerConfig: "wrangler.jsonc",
         apiTokenEnv: "CLOUDFLARE_API_TOKEN",
         accountIdEnv: "CLOUDFLARE_ACCOUNT_ID",
-        everyHours: 6,
         siteUrl: "https://fanm.oyabanare.com"
     }
 };

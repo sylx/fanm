@@ -23,7 +23,6 @@
     "wranglerConfig": "wrangler.jsonc",
     "apiTokenEnv": "CLOUDFLARE_API_TOKEN",
     "accountIdEnv": "CLOUDFLARE_ACCOUNT_ID",
-    "everyHours": 6,
     "siteUrl": "https://fanm.oyabanare.com"
   }
 }
