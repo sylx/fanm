@@ -29,7 +29,8 @@ const COMMON: readonly Axis[] = [
             "動きはスクロール（ctx.scroll）だけで作る。絵は描いたまま、画面の見る位置を縦横に動かす",
             "画面を横の帯に分け（ctx.scroll.split）、帯ごとに違う速さ・向きで流す。描き直しはしない",
             "動きは描き足しだけで作る。描いたものを消さず、画面を溜めていく",
-            "動きは二重バッファの差し替えで作る（G7 以外）。一枚ずつ作って見せる"
+            "動きは二重バッファの差し替えで作る（G7 以外）。一枚ずつ作って見せる",
+            "主役はすべて多色スプライト（sprites.setMulticolor）。一行三色の重ねで絵を作り込む"
         ]
     },
     {
@@ -278,6 +279,35 @@ const BY_FORM: Record<string, readonly Axis[]> = {
             ]
         }
     ],
+    tiles: [
+        {
+            name: "画面モード",
+            options: [
+                "G3（SCREEN 4）で作る。主人公は多色スプライト",
+                "G2（SCREEN 2）で作る。MSX1 の見た目。スプライトは一枚一色、一行に4枚まで",
+                "G1（SCREEN 1）で作る。色は8文字ごとに一組だけ。文字の形と並びで見せる"
+            ]
+        },
+        {
+            name: "動きの出どころ",
+            options: [
+                "動きは文字の定義の書き換えだけで作る。名前表はほとんど変えない",
+                "名前表を毎フレーム作り直し、文字そのものを升目の上で動かす。スプライトは使わない",
+                "ctx.scroll で一画素ずつ流し、入ってくる列か行だけを書き足す",
+                "buffer.shift で一文字ずつ送る。MSX1 の文字単位のスクロール",
+                "二重バッファ（screen.useDoubleBuffer）で名前表を二枚持ち、切り替えて見せる"
+            ]
+        },
+        {
+            name: "升目の使い方",
+            options: [
+                "地図が遊びの本体。当たり判定は文字コードで取る",
+                "文字で大きな絵を組む。何文字かを組み合わせて一つのものにする",
+                "升目が少しずつ別の文字に置き換わっていく（育つ、崩れる、染みる）",
+                "画面の一部だけ別のバンクに別の文字を入れ、上と下で違う世界にする"
+            ]
+        }
+    ],
     shooter: [
         {
             name: "地上",
@@ -315,6 +345,14 @@ export interface Twist {
     readonly axis: string;
     readonly option: string;
 }
+
+/**
+ * 型の作法とぶつかるので、その型には引かない共通の札。キャラクタ画面には
+ * ビットマップのモードも、描き足しも、パレット頼みの動きも無い。
+ */
+const SKIP_COMMON: Record<string, readonly string[]> = {
+    tiles: ["画面モード", "動きの出どころ"]
+};
 
 /** 企画に残っている縛りを、`軸: 札` の形で読む。 */
 function used(past: readonly Plan[], form: string, depth: number): Set<string> {
@@ -354,7 +392,8 @@ export function drawTwist(form: string, past: readonly Plan[], random: () => num
             return { axis: axis.name, option };
         });
     };
-    return [...draw(BY_FORM[form] ?? [], 2), ...draw(COMMON, 2)];
+    const skip = SKIP_COMMON[form] ?? [];
+    return [...draw(BY_FORM[form] ?? [], 2), ...draw(COMMON.filter(axis => !skip.includes(axis.name)), 2)];
 }
 
 /** 企画の頼みに入れる文。 */

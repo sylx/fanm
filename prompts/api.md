@@ -1,4 +1,4 @@
-# fantasy-msx API（5dcd700）
+# fantasy-msx API（7e73f45）
 
 このファイルは `npm run prompts:api` で生成する。手で編集しない。
 
@@ -113,10 +113,187 @@ screen.frame();
 Sprite colours may be given per line, which is a V9938 feature with no
 equivalent on an MSX1: one sprite, shaded, instead of two stacked.
 
+#### Multicolour sprites
+
+A sprite is one colour to a line. Two sprites make three: mode 2's CC bit
+(`SPRITE_FLAGS.COMPOSITE`) ORs a sprite into the one numbered just before it
+wherever the two overlap, so a line shows colour A, colour B, and A|B. This is
+how V9938 games got colourful characters, and it is the way to draw one here -
+draw the art in colours and let the BIOS find the split:
+
+```ts
+const ship = sprites.setMulticolorPattern(0, [   // hex digits are colours, "." is clear
+    "......4444......",
+    ".....466664.....",
+    "....46622664....",
+    // ... 16 rows for a 16x16 sprite, 8 for 8x8
+]);
+sprites.setMulticolor(0, { x: 100, y: 60, pattern: ship });   // takes sprites 0 and 1
+sprites.move(0, 104, 60);                                     // the pair moves together
+```
+
+A palette maps any other character: `setMulticolorPattern(0, art, { "#": 15, o: 8 })`.
+
+The rule is the chip's: **each line may hold up to three colours, and when it
+holds three, one must be the OR of the other two** - 2, 4 and 6; 1, 8 and 9;
+8, 7 and 15. Pick the palette with that in mind: set the entries for A, B and
+A|B together with `screen.setPalette`, and the OR colour reads as a highlight or
+an outline rather than a coincidence. Every line picks its own trio, so a head
+and a body can be coloured differently. A line that breaks the rule throws,
+naming the line and its colours.
+
+The pattern takes two slots (`slot` and the next, or the next four for 16x16)
+and the sprite takes two numbers, both counting against eight to a line. Only
+the base sprite collides, so the split keeps as many pixels in it as the
+colours allow. `set` on either number breaks the pair. `splitMulticolor` does
+the split without touching VRAM, for tools or tests.
+
 Coordinates are whole pixels. Anything else is rounded to the nearest one on
 the way in, so positions worked out with `sin` and `cos` can be passed straight
 through - a fraction reaching the packing would otherwise pick its shift from
 the fractional part and corrupt the pixel sharing the byte.
+
+### Characters: SCREEN 1, 2 and 4
+
+**The fastest screen this machine has is the oldest one.** In SCREEN 1, 2 and 4
+the screen is not pixels but 32x24 character codes - 768 bytes - and each code
+is drawn from eight bytes of pattern you are free to redefine: the PCG. So:
+
+- **Redraw the whole screen every frame.** 768 bytes is nothing. The bitmap
+  modes' 27KB takes the blitter two to seventeen frames to clear once
+  (see [Drawing takes time](#drawing-takes-time-and-you-can-see-it)); a
+  character screen is rebuilt from scratch and on the glass before the next
+  vertical sync, every time, with nothing half-drawn. A Z80 managed the same
+  768 bytes in about a third of a frame, which is why MSX1 games scroll whole
+  playfields and bitmap MSX2 games mostly do not.
+- **Animate by redefining.** Change a pattern and every cell using it changes
+  at once: 8 bytes for all the water on the screen to ripple.
+- **Keep game state and screen the same thing.** A map is a grid of codes, and
+  so is the screen. Collision is `get(x, y)`.
+
+| Mode | MSX-BASIC | Colour | Sprites |
+|------|-----------|--------|---------|
+| G1 | SCREEN 1 | one pair for each group of eight codes | mode 1: one colour, four to a line |
+| G2 | SCREEN 2 | one pair for every row of every character - "multicolour" | mode 1 |
+| G3 | SCREEN 4 | as G2 | mode 2: a colour a line, eight to a line |
+
+Every row of a character is two colours, one for its set bits and one for the
+rest, and colour 0 is not black but a hole the backdrop shows through.
+
+#### Defining characters
+
+```ts
+screen.setMode("G3");                   // or "G1", "G2"
+tiles.loadFont({ foreground: 15 });     // the machine's font into 32-126
+
+tiles.define(128, [                     // one colour: anything but "." is set
+    "..####..",
+    ".#....#.",
+    // ... 8 rows
+], 11, 0);                              // yellow on the backdrop
+
+tiles.defineMulticolor(129, [           // hex digits are colours, "." is 0
+    "44444444",
+    "4ffffff4",                         // at most two colours a row
+    "4f7777f4",
+    // ...
+]);
+tiles.defineMulticolor(130, art, { palette: { "#": 15, o: 8 } });
+```
+
+`setPattern`, `setPatterns` (many at once), `setColor` and `setRowColors`
+write the tables directly. `defineMulticolor` throws on a row with a third
+colour, naming it. In G1 the rule is two colours for the whole character, and
+they colour its group of eight - that is the mode, not the API.
+
+G2 and G3 cut the screen into thirds, each with its own 256 patterns and
+colours: banks. Left alone, every definition goes to all of them and a
+character looks the same anywhere; a `bank` argument writes one, which is how a
+screen gets more than 256 different characters. There is a fourth: the name
+table is 32 rows deep, the 256 lines R23 scrolls round, and the 8 rows below
+the screen are drawn from it.
+
+#### Placing them: a whole frame at a time
+
+`put`, `get`, `print` (a `"\n"` goes down a row), `putMap` (one string or code
+array per row), `fill`, `clear` and `shift` (the MSX1's character scroll, a
+cell at a time) work on the screen directly - and on a `NameBuffer`, a name
+table in RAM. The idiom is the one MSX games used, a copy of the screen in RAM
+blasted across at VBlank:
+
+```ts
+const frame = new NameBuffer();         // 32x24; 32x32 for the whole table
+
+draw({ tiles }) {
+    frame.clear(32);
+    frame.putMap(0, 0, level.rowsAround(camera));      // the playfield
+    for (const e of enemies) frame.put(e.x, e.y, e.code);
+    frame.print(0, 23, `SCORE ${score}`);
+    tiles.transfer(frame);              // 768 bytes, this frame, whole
+}
+```
+
+A page in these modes is a name table, so `screen.useDoubleBuffer()` and
+`flip()` swap what is shown whole, and the scroll's bands and `wide` work as
+they do on a bitmap - `wide` pairs two tables into a plane 64 characters
+across, which `tiles` addresses as one. `tiles` writes `screen.drawPage`, as
+`gfx` does. For smooth scrolling, move the display with R23 (and the V9958's
+R26/R27) and redraw only the row or column coming into view.
+
+#### Without the BIOS
+
+`system.pcg` is the same thing at the chip level (src/api/pcg.ts): it writes
+wherever R2-R4 point, so it works on `vdp.setMode`'s own layout - MSX-BASIC's,
+with the name table inside the fourth bank, where `pcg.banks` is 3 and the
+fourth is left alone - or on one of your own.
+
+```ts
+const { vdp, pcg, machine } = createSystem();
+vdp.setMode("G2");
+vdp.setDisplayEnabled(true);
+pcg.defineMulticolor(1, ["22222222", "33333333" /* ... */]);
+pcg.print(0, 0, [1, 1, 1, 1]);
+machine.frame();
+```
+
+`parsePattern` and `parseMulticolor` do the bitmap reading without touching
+VRAM, for tools and tests.
+
+#### What the character modes do not have
+
+`gfx`, `image`, `text` and `console` need a framebuffer and throw here.
+`sprites` works in all three, with what sprite mode 1 leaves in G1 and G2: a
+sprite takes the first of its line colours, and a multicolour pair is refused.
+`sprites.setEnabled(false)` and a band's `sprites: false` do not hide mode 1
+sprites in the emulator, which ignores R8's SPD there.
+
+#### CAVE
+
+What the PCG is for. SCREEN 4 has no framebuffer: the screen is 32x24
+character codes, and CAVE throws all 768 of them away every frame and builds
+them again from the cave's description - rock, moss, lava, crystals, the score
+- in a `NameBuffer`, then `transfer`s it whole. There is no dirty tracking, no
+half-built picture, and no blitter: the SCREEN 5 demos wait two frames for a
+clear, and this redraws the world sixty times a second for nothing. It is the
+same trade the MSX1's scrolling shooters made.
+
+The movement is not redrawing, though. The name table is used as a ring 32
+columns round - world column `c` lives in slot `c & 31` - and the V9958's
+R26/R27 slide the display along it a pixel at a time. 33 columns are written
+each frame, so the one arriving on the right lands in the slot that has just
+gone out on the left, under R25's mask. The score is a band of its own at line
+176, held at `x = 0` by the line interrupt.
+
+The lava boils and the crystals glint without the screen being touched. Every
+lava cell is character 131, so rewriting its 8 bytes of pattern and 8 of
+colour moves the whole river; the crystals keep their shape and cycle their
+colour-table rows. Each cave character is drawn with `defineMulticolor`, two
+colours to a row: a lit edge under the ceiling, moss on the floor.
+
+Collision is `tiles.get`: a point of the ship is on rock when the code under it
+on the screen is a rock character. The ship itself is a 16x16 sprite with a
+colour a line - SCREEN 4's sprites are the MSX2's, which is the reason to
+choose it over SCREEN 2.
 
 ### Scrolling
 
@@ -322,8 +499,9 @@ import { BUTTON, run, type Context } from "./src/index.js";
 run({
     init({ screen, gfx, sprites }: Context) {
         gfx.now.clear(1);                       // the boot screen cannot wait
-        sprites.setPatternFromBitmap(0, [...]);
-        sprites.setActiveCount(1);
+        const ship = sprites.setMulticolorPattern(0, [...]);   // A, B and A|B a line
+        sprites.setMulticolor(0, { x: 120, y: 100, pattern: ship });
+        sprites.setActiveCount(2);
     },
 
     update({ input, sprites }: Context) {
@@ -379,10 +557,6 @@ The mixer also strips DC. A PSG channel with its mixer bit off still drives its
 amplitude out as a steady level - that is how the chip was made to play
 samples - and on a real MSX the capacitor on the output removes it.
 
-```bash
-npm run sound -- out.wav        # both chips put through their paces
-```
-
 #### Music
 
 Tunes are written in MML, the notation MSX BASIC's `PLAY` used, and driven the
@@ -415,10 +589,6 @@ them - so the compiler rounds the running total rather than each note. Tracks
 written in different subdivisions still come out exactly the same length, and a
 loop stays a loop.
 
-```bash
-npm run music -- out.wav        # eight bars, five voices
-```
-
 ### Machine profile
 
 Fixed, and not configurable: **MSX2, V9958, NTSC 60Hz, 128KB VRAM**.
@@ -436,13 +606,14 @@ the difference, except by the chip's ID in S#1.
 ```ts
 export type ScreenModeName = "T1" | "T2" | "MC" | "G1" | "G2" | "G3" | "G4" | "G5" | "G6" | "G7";
 export type PaletteColor = readonly [number, number, number];
+export type PatternModeName = "G1" | "G2" | "G3";
 ```
 
 ### runtime/runtime
 
 ```ts
 import type { Bios } from "../bios/index.js";
-import type { Console, Graphics, Images, Ime, Screen, Scroll, SoundDriver, Sprites, Typesetter } from "../bios/index.js";
+import type { Console, Graphics, Images, Ime, Screen, Scroll, SoundDriver, Sprites, Tiles, Typesetter } from "../bios/index.js";
 import type { Frame } from "../core/machine.js";
 import type { Crt } from "../host/crt.js";
 import { Input } from "./input.js";
@@ -459,6 +630,11 @@ export interface Context {
     readonly scroll: Scroll;
     readonly gfx: Graphics;
     readonly sprites: Sprites;
+    /**
+     * Characters for SCREEN 1, 2 and 4: patterns, their colours, and the name
+     * table that places them. `screen.setMode("G1")` (or G2, G3) first.
+     */
+    readonly tiles: Tiles;
     /** Loading pictures from URLs, reduced to what the screen mode can show. */
     readonly image: Images;
     /** Text in the host's own fonts, rasterised outside the machine and carried in. */
@@ -567,6 +743,7 @@ export declare class Runtime implements Context {
     get scroll(): Scroll;
     get gfx(): Graphics;
     get sprites(): Sprites;
+    get tiles(): Tiles;
     get image(): Images;
     get text(): Typesetter;
     get console(): Console;
@@ -769,6 +946,25 @@ export declare class Raster {
 import { type PaletteColor, type ScreenModeName, type Vdp } from "../api/index.js";
 import type { FantasyMachine } from "../core/machine.js";
 import { Scroll } from "./scroll.js";
+/**
+ * Where the pattern modes keep their tables. Not MSX-BASIC's layout, which
+ * packs SCREEN 2 into 16KB and leaves no room for a name table 32 rows deep,
+ * let alone several.
+ */
+export declare const PATTERN_TABLES: {
+    /** 256 characters x 8 bytes in SCREEN 1; four banks of them in SCREEN 2 and 4. */
+    readonly patterns: 0;
+    /** One byte per eight characters in SCREEN 1; one per character row in SCREEN 2 and 4. */
+    readonly colors: 8192;
+    /**
+     * The first name table. The next few follow it 1KB apart, alternating with
+     * copies 32KB further up: the V9958's two-page horizontal scroll pairs a
+     * name table with the one A15 away, so page 2n+1 sits 0x8000 above 2n.
+     */
+    readonly names: 16384;
+    /** How many name tables there are to flip between. */
+    readonly pages: 8;
+};
 export interface SpriteTables {
     /** In sprite mode 2 this holds the per-line colours; attributes follow it. */
     readonly colors: number;
@@ -786,10 +982,22 @@ export declare class Screen {
      */
     get spriteTables(): SpriteTables;
     /**
-     * Sets up a bitmap screen. Geometry reaches the raster at the next vertical
-     * sync, so the frame you call this in still renders with the old borders.
+     * Sets up a screen. Geometry reaches the raster at the next vertical sync,
+     * so the frame you call this in still renders with the old borders.
+     *
+     * G1, G2 and G3 get their tables laid out as `PATTERN_TABLES` says, with
+     * room for every bank and eight name tables. VRAM is left as it was, so whatever the last mode put
+     * there shows as characters until `tiles` is given something to draw.
      */
     setMode(name?: ScreenModeName): void;
+    /**
+     * Which of the V9938's two sprite systems the mode has. 1 in the MSX1
+     * modes - SCREEN 1, 2 and 3 - which is one colour a sprite and four to a
+     * line; 2 everywhere else, which is a colour a line and eight to a line.
+     */
+    get spriteMode(): 1 | 2;
+    /** How many pages there are to flip between: framebuffers, or in the pattern modes name tables. */
+    get pages(): number;
     get mode(): import("../index.js").ScreenMode;
     get width(): number;
     /**
@@ -802,7 +1010,7 @@ export declare class Screen {
      */
     get pixelAspect(): number;
     get height(): number;
-    /** VRAM address where a page's framebuffer starts. */
+    /** VRAM address where a page's framebuffer starts - or in the pattern modes, its name table. */
     pageBase(page: number): number;
     /**
      * How many lines of a page hold picture: every line R23 can scroll into
@@ -822,7 +1030,11 @@ export declare class Screen {
      * drawing to show it whole rather than half-built.
      */
     flip(): void;
-    /** Enables double buffering: draw on page 1 while page 0 is shown. */
+    /**
+     * Enables double buffering: draw on page 1 while page 0 is shown. In the
+     * pattern modes the pages are name tables, so it is the characters that
+     * are double buffered - the patterns and colours are shared.
+     */
     useDoubleBuffer(): void;
     /**
      * Scrolls the display vertically. The page wraps at 256 lines, not 212.
@@ -978,7 +1190,7 @@ import type { Screen } from "./screen.js";
 export declare const SPRITE_COUNT = 32;
 /** Per-line colour byte flags. */
 export declare const SPRITE_FLAGS: {
-    /** Shifts the sprite 32 pixels left, so it can slide in from off-screen. */
+    /** Shifts the sprite 32 pixels left, so it can slide in from off-screen. The only flag sprite mode 1 has. */
     readonly EARLY_CLOCK: 128;
     /** Draws this sprite merged with the higher-priority one above it. */
     readonly COMPOSITE: 64;
@@ -995,8 +1207,48 @@ export interface SpriteState {
     /** Extra per-line flags, ORed into every colour byte. */
     flags?: number;
 }
+/** A bitmap split into the two sprites that draw it in up to three colours a line. */
+export interface MulticolorPattern {
+    /** Pattern slot of the base sprite, the one that collides. */
+    readonly base: number;
+    /** Pattern slot of the sprite ORed over it. */
+    readonly overlay: number;
+    /** Colour of each line of the base sprite. */
+    readonly baseColors: Uint8Array;
+    /** Colour of each line of the overlay, before CC is added. */
+    readonly overlayColors: Uint8Array;
+}
+export interface MulticolorState {
+    x: number;
+    y: number;
+    pattern: MulticolorPattern;
+    /** Extra per-line flags for both sprites. CC is added to the overlay regardless. */
+    flags?: number;
+}
+/** Rows and line colours of the two sprites, before they reach VRAM. */
+export interface MulticolorSplit {
+    baseRows: number[];
+    overlayRows: number[];
+    baseColors: Uint8Array;
+    overlayColors: Uint8Array;
+}
+/**
+ * Works out which pixels of a colour bitmap go in which of two sprites, and
+ * the colours each line of them needs. A character is looked up in `palette`
+ * first, then read as a hex digit; space, "." and colour 0 are transparent.
+ *
+ * Each line may hold up to three colours, and when it holds three, one of them
+ * has to be the OR of the other two - 2, 4 and 6, say, or 1, 8 and 9. That is
+ * the chip's rule, not this function's. A line that breaks it throws, naming
+ * the line and its colours.
+ *
+ * Of the ways a line can be split, the one that leaves the most pixels in the
+ * base sprite wins, since only the base sprite takes part in collisions.
+ */
+export declare function splitMulticolor(bitmap: readonly string[], palette?: Readonly<Record<string, number>>): MulticolorSplit;
 export declare class Sprites {
     /** Screen line of each shown sprite, before the scroll is added back. */
+    /** Set on the base of a multicolour pair, so the overlay after it moves along. */
     constructor(vdp: Vdp, screen: Screen);
     /** Table addresses follow the screen mode, since page sizes differ. */
     /** 8x8 or 16x16, optionally with every pixel doubled. */
@@ -1014,11 +1266,24 @@ export declare class Sprites {
      * writing: one string per row, any character other than space or "." set.
      */
     setPatternFromBitmap(slot: number, bitmap: readonly string[]): void;
+    /**
+     * Loads a bitmap drawn in colours as two patterns, for a sprite of up to
+     * three colours a line - see `splitMulticolor` for how characters read and
+     * which colours may share a line. The overlay goes in the next slot (the
+     * next four for 16x16), so this takes two; place it with `setMulticolor`.
+     */
+    setMulticolorPattern(slot: number, bitmap: readonly string[], palette?: Readonly<Record<string, number>>): MulticolorPattern;
+    /**
+     * Places a multicolour sprite as sprites `index` and `index + 1`. The pair
+     * counts as two against the eight a line allows. `move` and `hide` on
+     * `index` take the overlay with it until `set` puts something else there.
+     */
+    setMulticolor(index: number, state: MulticolorState): void;
     /** Places a sprite. `y` is the screen line its top row appears on. */
     set(index: number, state: SpriteState): void;
     /** Moves a sprite without touching its pattern or colours. */
     move(index: number, x: number, y: number): void;
-    /** Replaces the per-line colours of a sprite already placed. */
+    /** Replaces the per-line colours of a sprite already placed. In sprite mode 1, its one colour: the first. */
     setLineColors(index: number, colors: ArrayLike<number>, flags?: number): void;
     /** Parks one sprite off-screen. The rest keep being drawn. */
     hide(index: number): void;
@@ -1034,6 +1299,7 @@ export declare class Sprites {
      * the picture moves under it.
      */
     follow(): void;
+    /** Breaks up whichever pair `index` belongs to, as base or as overlay. */
     /**
      * Where hidden sprites go: page lines no band shows. Below the screen when
      * nothing scrolls - but a band can point anywhere in the page, and a sprite
@@ -1050,8 +1316,201 @@ export declare class Sprites {
         x: number;
         y: number;
     };
-    /** True when more than eight sprites landed on one line and one was dropped. */
+    /** True when more than eight sprites landed on one line - four in sprite mode 1 - and one was dropped. */
     overflowed(): boolean;
+}
+```
+
+### bios/tiles
+
+```ts
+import { CellGrid, type Pcg } from "../api/index.js";
+import type { Screen } from "./screen.js";
+export interface FontOptions {
+    foreground?: number;
+    background?: number;
+    /** G2 and G3: the one bank to load it into. Left out, all of them. */
+    bank?: number;
+}
+export declare class Tiles extends CellGrid {
+    readonly rows = 32;
+    protected readonly data: Uint8Array;
+    constructor(pcg: Pcg, screen: Screen, vram: Uint8Array);
+    /** Characters across the plane: 32, or 64 when the scroll is `wide`. */
+    get columns(): number;
+    /** How many banks of patterns and colours there are: 4 in G2 and G3, 1 in G1. */
+    get banks(): number;
+    /** Loads a character's shape: 8 rows, bit 7 leftmost. */
+    setPattern(code: number, rows: ArrayLike<number>, bank?: number): void;
+    /** Loads many shapes at once, 8 bytes each, from `first` on. */
+    setPatterns(first: number, bytes: ArrayLike<number>, bank?: number): void;
+    /** Colours a character, every row alike. In G1, its whole group of eight. */
+    setColor(code: number, foreground: number, background?: number, bank?: number): void;
+    /** G2 and G3: a colour table byte for each of a character's 8 rows. */
+    setRowColors(code: number, colors: ArrayLike<number>, bank?: number): void;
+    /** A one-colour character from a bitmap: anything but space or "." is set. */
+    define(code: number, bitmap: readonly string[], foreground: number, background?: number, bank?: number): void;
+    /** A character from a bitmap in colours, two to a row - two to the character in G1. */
+    defineMulticolor(code: number, bitmap: readonly string[], options?: {
+        palette?: Readonly<Record<string, number>>;
+        bank?: number;
+    }): void;
+    /**
+     * Loads the machine's own font into codes 32-126, so `print` has something
+     * to show. In G1 that colours groups 4 to 15 as well: every code from 32
+     * to 127.
+     */
+    loadFont(options?: FontOptions): void;
+    /** A cell of the page being drawn on; with a wide plane, of the pair it belongs to. */
+    protected index(x: number, y: number): number;
+}
+```
+
+### api/pcg
+
+```ts
+import type { ScreenModeName } from "./v9938.js";
+import type { Vdp } from "./vdp.js";
+/** The modes built from 8x8 characters: SCREEN 1, 2 and 4. */
+export type PatternModeName = "G1" | "G2" | "G3";
+export declare function isPatternMode(name: ScreenModeName): name is PatternModeName;
+/** Characters across a name table. */
+export declare const NAME_COLUMNS = 32;
+/**
+ * Rows of a name table: 32, the 256 lines R23 scrolls round. The screen shows
+ * 24; the other 8 come into view with a vertical scroll.
+ */
+export declare const NAME_ROWS = 32;
+/** Rows the screen shows. */
+export declare const SCREEN_ROWS = 24;
+/** Character rows a bank covers in G2 and G3. */
+export declare const BANK_ROWS = 8;
+/** Which bank the character at a row of the name table is drawn from, in G2 and G3. */
+export declare function bankOfRow(row: number): number;
+/** A colour table byte: foreground in the high nibble, background in the low. */
+export declare function colorPair(foreground: number, background?: number): number;
+/**
+ * A one-colour bitmap as 8 rows of pattern bits: one string per row, space
+ * and "." clear, anything else set. Short rows and missing rows are clear.
+ */
+export declare function parsePattern(bitmap: readonly string[]): number[];
+/** A bitmap in colours, as the pattern bits and colour bytes that draw it. */
+export interface MulticolorCharacter {
+    /** 8 rows of pattern bits, set where the row's foreground is. */
+    readonly rows: number[];
+    /** 8 colour table bytes, one per row. */
+    readonly colors: number[];
+}
+/**
+ * Works out the pattern and row colours for a bitmap drawn in colours: a hex
+ * digit a pixel, or whatever `palette` maps, with space and "." for colour 0.
+ *
+ * Two colours to a row is the chip's rule, and a row with a third throws,
+ * naming it. Where colour 0 appears it is the background, so it stays a hole;
+ * otherwise the commoner colour is the background and the rarer one is set.
+ */
+export declare function parseMulticolor(bitmap: readonly string[], palette?: Readonly<Record<string, number>>): MulticolorCharacter;
+/**
+ * A grid of character codes, in VRAM or out of it. Positions wrap round the
+ * grid, so a map can be written across the edge of a scrolling plane.
+ */
+export declare abstract class CellGrid {
+    abstract readonly columns: number;
+    abstract readonly rows: number;
+    protected abstract readonly data: Uint8Array;
+    /** Index into `data` of a cell already wrapped into the grid. */
+    protected abstract index(x: number, y: number): number;
+    /** Puts one character. */
+    put(x: number, y: number, code: number): void;
+    /** The character at a cell. */
+    get(x: number, y: number): number;
+    /**
+     * Puts a run of characters rightwards from (x, y): a string's character
+     * codes, or an array of codes. A "\n" in a string goes back to `x` a row
+     * down.
+     */
+    print(x: number, y: number, text: string | ArrayLike<number>): void;
+    /** Puts a block of characters, one string or array of codes per row. */
+    putMap(x: number, y: number, rows: ReadonlyArray<string | ArrayLike<number>>): void;
+    /** Fills a rectangle of cells with one character. */
+    fill(x: number, y: number, width: number, height: number, code: number): void;
+    /** Fills every cell. 32 is a space, which is what a font puts there. */
+    clear(code?: number): void;
+    /**
+     * Copies another grid in with its top left at (x, y) - a `NameBuffer`
+     * built up this frame, typically, landing on the screen whole.
+     */
+    transfer(source: CellGrid, x?: number, y?: number): void;
+    /**
+     * Moves everything `dx` cells right and `dy` down, filling what is
+     * uncovered with `code`: the character scroll of the MSX1, a cell at a
+     * time. For a smooth one, move the display with R23 instead.
+     */
+    shift(dx: number, dy: number, code?: number): void;
+}
+/**
+ * A name table in RAM. Build the frame in one of these - clear it, draw the
+ * map, the score, the enemies made of characters - and `transfer` it to the
+ * screen in one go. 32x24 is the screen; 32x32 the whole table.
+ */
+export declare class NameBuffer extends CellGrid {
+    readonly columns: number;
+    readonly rows: number;
+    protected readonly data: Uint8Array;
+    constructor(columns?: number, rows?: number);
+    /** The codes, row after row - for saving a screen, or filling one from a file. */
+    get cells(): Uint8Array;
+    protected index(x: number, y: number): number;
+}
+/**
+ * The pattern, colour and name tables of G1, G2 and G3, wherever the VDP has
+ * them. Every call checks the mode: what a colour byte means depends on it.
+ */
+export declare class Pcg extends CellGrid {
+    readonly columns = 32;
+    readonly rows = 32;
+    protected readonly data: Uint8Array;
+    constructor(vdp: Vdp);
+    /** The name table the VDP is showing, which is the one `put` and the rest write. */
+    get nameTable(): number;
+    /**
+     * How many banks of patterns and colours there are. 1 in G1. In G2 and G3,
+     * 4 - the fourth drawing the rows a vertical scroll brings in - unless the
+     * name table sits where the fourth would be, as MSX-BASIC's layout has it,
+     * and then 3.
+     */
+    get banks(): number;
+    /**
+     * Loads a character's shape: 8 rows, bit 7 leftmost. In G2 and G3 `bank`
+     * picks the third of the screen; left out, every bank gets it.
+     */
+    setPattern(code: number, rows: ArrayLike<number>, bank?: number): void;
+    /** Loads many shapes at once: `bytes` is 8 per character, from `first` on. */
+    setPatterns(first: number, bytes: ArrayLike<number>, bank?: number): void;
+    /**
+     * Colours a character, every row alike. In G1 colour belongs to eight
+     * codes together, so this colours `code & ~7` to `code | 7`.
+     */
+    setColor(code: number, foreground: number, background?: number, bank?: number): void;
+    /** G2 and G3: a colour table byte for each of a character's 8 rows. G1 throws. */
+    setRowColors(code: number, colors: ArrayLike<number>, bank?: number): void;
+    /**
+     * A one-colour character from a bitmap (see `parsePattern`), set bits in
+     * `foreground` and the rest in `background` - 0, the backdrop, unless
+     * given. In G1 the colours go to the character's whole group of eight.
+     */
+    define(code: number, bitmap: readonly string[], foreground: number, background?: number, bank?: number): void;
+    /**
+     * A character from a bitmap drawn in colours (see `parseMulticolor`), two
+     * to a row. G1 has one pair for a group of eight characters, so there the
+     * whole character may hold two, and they colour its group - unless it is
+     * all colour 0, which leaves the group's colours be.
+     */
+    defineMulticolor(code: number, bitmap: readonly string[], options?: {
+        palette?: Readonly<Record<string, number>>;
+        bank?: number;
+    }): void;
+    protected index(x: number, y: number): number;
 }
 ```
 

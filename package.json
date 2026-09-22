@@ -23,7 +23,7 @@
     "publish": "npm run gallery:build && tsx packages/batch/src/cli.ts publish",
     "publish:local": "npm run gallery:build && tsx packages/batch/src/cli.ts publish --local",
     "remove": "npm run gallery:build && tsx packages/batch/src/cli.ts remove",
-    "check:templates": "tsx packages/batch/src/cli.ts check templates/ambient templates/game templates/poem templates/adventure templates/rpg templates/action templates/shooter",
+    "check:templates": "tsx packages/batch/src/cli.ts check templates/ambient templates/game templates/poem templates/adventure templates/rpg templates/action templates/shooter templates/tiles",
     "prompts:api": "tsx packages/batch/src/generate/api-docs.ts",
     "engine:pin": "git -C engine/fantasy-msx rev-parse HEAD > engine/COMMIT",
     "gallery:dev": "npm run dev -w @fanm/gallery",

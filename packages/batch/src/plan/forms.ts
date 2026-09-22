@@ -23,7 +23,8 @@ export const FORMS: readonly Form[] = [
     { id: "adventure", label: "アドベンチャー" },
     { id: "rpg", label: "RPG" },
     { id: "action", label: "横スクロールアクション" },
-    { id: "shooter", label: "縦スクロールシューティング" }
+    { id: "shooter", label: "縦スクロールシューティング" },
+    { id: "tiles", label: "キャラクタ画面" }
 ];
 
 export const DEFAULT_FORM = FORMS[0];

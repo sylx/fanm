@@ -9,14 +9,17 @@
 //
 // 当たり判定は自分の座標で取る。sprites.collided() は1フレームに一度しか
 // 読めず、どれとどれが当たったかも分からない。
+//
+// 主人公は多色スプライト。二枚を重ねて一行に三色まで出す（0番と1番を使う）。
 
-import { BUTTON, compile, opllVoice, psgVoice, type App, type Context } from "fantasy-msx";
+import { BUTTON, compile, opllVoice, psgVoice, type App, type Context, type MulticolorPattern } from "fantasy-msx";
 import type { WorkFactory } from "@fanm/work";
 
 const GROUND = 176;          // 主人公の足が乗る高さ
 const PLAYER_Y = GROUND - 16;
 const FALLERS = 6;           // 同時に落ちてくる数。スプライトは32枚まで
-const SPRITE_PLAYER = 0;     // スプライト0番は主人公。1番から落ちるもの
+const SPRITE_PLAYER = 0;     // スプライト0番と1番は主人公（多色なので二枚）
+const SPRITE_FALLERS = 2;    // 2番から落ちるもの
 
 /** 落ちてくるもの。実は点、石は当たると残機が減る。 */
 interface Faller {
@@ -37,6 +40,7 @@ const create: WorkFactory = env => {
     let idle = 0;                           // 最後に人が触ってからのフレーム数
 
     let player = { x: 120, vx: 0 };
+    let carrier: MulticolorPattern;
     const fallers: Faller[] = Array.from({ length: FALLERS }, () => ({
         x: 0, y: -32, speed: 1, kind: "seed", alive: false
     }));
@@ -122,17 +126,19 @@ const create: WorkFactory = env => {
             hud(ctx);
 
             sprites.setSize(16);
-            sprites.setPatternFromBitmap(0, [                    // 主人公。籠をかかえた人
-                "................", ".....######.....",
-                "....########....", "....##....##....",
-                "....########....", ".....######.....",
-                "......####......", "....########....",
-                "...##########...", "..####....####..",
-                "..###......###..", "..############..",
-                "..############..", "...##########...",
-                "....##....##....", "....##....##...."
+            // 主人公。籠をかかえた人。数字は色で、一行に三色なら一色は残り二色の OR
+            // （目の行は 6 と 9 と 15。6|9 = 15）。パターンは 0 と 4 の二組を使う。
+            carrier = sprites.setMulticolorPattern(0, [
+                "................", ".....666666.....",
+                "....66666666....", "....69f99f96....",
+                "....99999999....", ".....999999.....",
+                "......4444......", "....44444444....",
+                "...4444444444...", "..aaaa....aaaa..",
+                "..aaa......aaa..", "..abaabaabaaba..",
+                "..aaaaaaaaaaaa..", "...aaaaaaaaaa...",
+                "....44....44....", "....66....66...."
             ]);
-            sprites.setPatternFromBitmap(4, [                    // 実
+            sprites.setPatternFromBitmap(8, [                    // 実
                 "................", "................",
                 "......####......", ".....######.....",
                 "....########....", "....########....",
@@ -142,7 +148,7 @@ const create: WorkFactory = env => {
                 "................", "................",
                 "................", "................"
             ]);
-            sprites.setPatternFromBitmap(8, [                    // 石
+            sprites.setPatternFromBitmap(12, [                   // 石
                 "................", "................",
                 "....######......", "...########.....",
                 "..##########....", "..##########....",
@@ -152,9 +158,9 @@ const create: WorkFactory = env => {
                 "................", "................",
                 "................", "................"
             ]);
-            sprites.set(SPRITE_PLAYER, { x: player.x, y: PLAYER_Y, pattern: 0, color: 15 });
-            fallers.forEach((_, n) => sprites.set(SPRITE_PLAYER + 1 + n, { x: 0, y: 212, pattern: 4, color: 10 }));
-            sprites.setActiveCount(1 + FALLERS);
+            sprites.setMulticolor(SPRITE_PLAYER, { x: player.x, y: PLAYER_Y, pattern: carrier });
+            fallers.forEach((_, n) => sprites.set(SPRITE_FALLERS + n, { x: 0, y: 212, pattern: 8, color: 10 }));
+            sprites.setActiveCount(SPRITE_FALLERS + FALLERS);
 
             bgm.play(theme, { loop: true });
         },
@@ -186,7 +192,7 @@ const create: WorkFactory = env => {
             const move = demo ? autopilot() : axis.x;
             player.vx = move * 3;
             player.x = Math.max(0, Math.min(240, player.x + player.vx));
-            sprites.move(SPRITE_PLAYER, player.x, PLAYER_Y);
+            sprites.move(SPRITE_PLAYER, player.x, PLAYER_Y);         // 重ねた二枚が一緒に動く
 
             for (let n = 0; n < fallers.length; ++n) {
                 const faller = fallers[n];
@@ -212,10 +218,10 @@ const create: WorkFactory = env => {
                     faller.alive = false;
                 }
 
-                sprites.set(SPRITE_PLAYER + 1 + n, {
+                sprites.set(SPRITE_FALLERS + n, {
                     x: faller.alive ? faller.x : 0,
                     y: faller.alive ? faller.y : 212,
-                    pattern: faller.kind === "seed" ? 4 : 8,
+                    pattern: faller.kind === "seed" ? 8 : 12,
                     color: faller.kind === "seed" ? 10 : 14
                 });
             }

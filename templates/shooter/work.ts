@@ -14,10 +14,11 @@
 //      点数の帯に幽霊のように映る（帯ごとに y が違うため）。付けておけば、上から
 //      入ってくる敵も点数の帯の下から滑り出てくる。
 //   4. 動くもの（自機、弾、敵）はすべてスプライト。一行に並べられるのは8枚まで。
+//      自機は多色スプライト（二枚重ねなので2枚と数える）。弾と敵は一色のまま。
 //
 // 誰も触らなくても遊びが進むこと。最初は機械が自分で避け、撃つ。
 
-import { BUTTON, compile, opllVoice, psgVoice, type App, type Context, type ScrollBand } from "fantasy-msx";
+import { BUTTON, compile, opllVoice, psgVoice, type App, type Context, type MulticolorPattern, type ScrollBand } from "fantasy-msx";
 import type { WorkFactory } from "@fanm/work";
 
 const HUD_HEIGHT = 12;
@@ -31,8 +32,8 @@ const PLAYER_SPEED = 2;
 const SHOT_SPEED = 6;
 
 // スプライトの割り当て。
-const SPRITE_PLAYER = 0;
-const SPRITE_SHOTS = 1;
+const SPRITE_PLAYER = 0;            // 多色なので 0 と 1
+const SPRITE_SHOTS = 2;
 const SHOT_SLOTS = 4;
 const SPRITE_ENEMIES = SPRITE_SHOTS + SHOT_SLOTS;
 const ENEMY_SLOTS = 8;
@@ -78,6 +79,7 @@ const create: WorkFactory = env => {
     let field: ScrollBand;
 
     let player = { x: 120, y: 176, blink: 0 };
+    let ship: MulticolorPattern[] = [];     // 噴射の炎だけが違う二枚
     let shots: Shot[] = [];
     let enemies: Enemy[] = [];
     let bullets: Bullet[] = [];
@@ -262,7 +264,7 @@ const create: WorkFactory = env => {
 
     function place({ sprites }: Context): void {
         if (over > 0 || (player.blink > 0 && (frame >> 2) % 2 === 0)) sprites.hide(SPRITE_PLAYER);
-        else sprites.set(SPRITE_PLAYER, { x: Math.round(player.x), y: Math.round(player.y), pattern: 0, color: 9 });
+        else sprites.setMulticolor(SPRITE_PLAYER, { x: Math.round(player.x), y: Math.round(player.y), pattern: ship[(frame >> 2) & 1] });
 
         for (let n = 0; n < SHOT_SLOTS; ++n) {
             const shot = shots[n];
@@ -303,16 +305,18 @@ const create: WorkFactory = env => {
             hud(ctx);
 
             sprites.setSize(16);
-            sprites.setPatternFromBitmap(0, [                   // 自機
-                ".......##.......", ".......##.......",
-                "......####......", "......####......",
-                "......#..#......", ".....######.....",
-                "..#..########..#", "..##.########.##",
-                "..##############", "..##############",
-                "..#...######...#", ".......####.....",
-                "......######....", ".....##.##.##...",
-                "................", "................"
-            ]);
+            // 自機。数字は色（9 白、b 赤、2 海の青、a 黄、e 橙）。一行に二色までなら
+            // どの色でもよい。多色は二組のパターンを使う（24 と 28、32 と 36）。
+            const body = [
+                ".......99.......", ".......99.......",
+                "......9229......", "......9229......",
+                "......9..9......", ".....999999.....",
+                "..b..99999999..b", "..bb.99999999.bb",
+                "..bb9999999999bb", "..bb9999999999bb",
+                "..b...999999...b"
+            ];
+            ship[0] = sprites.setMulticolorPattern(24, [...body, "......abba......", "......eaae......", ".......ee.......", "", ""]);
+            ship[1] = sprites.setMulticolorPattern(32, [...body, "......abba......", "......aeea......", "......e..e......", "", ""]);
             sprites.setPatternFromBitmap(4, [                   // 自機の弾
                 "................", "................",
                 "......#..#......", "......#..#......",

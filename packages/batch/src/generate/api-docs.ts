@@ -18,6 +18,8 @@ const SECTIONS = [
     "## How it works",
     "### Drawing takes time, and you can see it",
     "## Using the BIOS",
+    "## Characters: SCREEN 1, 2 and 4",
+    "### CAVE",
     "## Scrolling",
     "## Text in a real typeface",
     "## Writing a game",
@@ -30,7 +32,7 @@ const SECTIONS = [
  * 型の名前だけ載っていても、取り得る値が分からないと当てずっぽうになる。
  * 実際に setMode("screen7") と書いて落ちたので、別名の定義も渡す。
  */
-const ALIASES = ["api/v9938.d.ts", "bios/screen.d.ts", "runtime/runtime.d.ts"];
+const ALIASES = ["api/v9938.d.ts", "api/pcg.d.ts", "bios/screen.d.ts", "runtime/runtime.d.ts"];
 
 const DECLARATIONS = [
     "runtime/runtime.d.ts",
@@ -39,6 +41,8 @@ const DECLARATIONS = [
     "bios/screen.d.ts",
     "bios/scroll.d.ts",
     "bios/sprites.d.ts",
+    "bios/tiles.d.ts",
+    "api/pcg.d.ts",
     "bios/text.d.ts",
     "bios/sound.d.ts",
     "bios/mml.d.ts",
@@ -59,7 +63,8 @@ function section(readme: string, heading: string): string {
         if (match && match[1].length <= depth) break;
         if (match && SECTIONS.includes(lines[end])) break;
     }
-    return lines.slice(start, end).join("\n").trim();
+    // エンジンの npm run の例は、作品からは使えない。
+    return lines.slice(start, end).join("\n").replace(/```bash\n[\s\S]*?```/g, "").trim();
 }
 
 /** 型の別名（"G4" | "G5" ... のような、取り得る値そのもの）だけを抜き出す。 */

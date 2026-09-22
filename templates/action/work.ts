@@ -11,10 +11,11 @@
 //      点数の帯はページ0に置き、動かさない。
 //   3. 動くもの（主人公、敵、コイン）はすべてスプライト。座標は画面の座標で渡す。
 //      横のスクロールはスプライトを動かさないので、世界の座標からカメラを引いて置く。
+//      主人公は多色スプライト（二枚重ねで一行に三色まで）。
 //
 // 誰も触らなくても遊びが進むこと。最初は機械が自分で走り、跳ぶ。
 
-import { BUTTON, compile, opllVoice, psgVoice, type App, type Context, type ScrollBand } from "fantasy-msx";
+import { BUTTON, compile, opllVoice, psgVoice, type App, type Context, type MulticolorPattern, type ScrollBand } from "fantasy-msx";
 import type { WorkFactory } from "@fanm/work";
 
 // 画面の帯。上から、点数（ページ0）、雲、丘、地面（ここから下がカメラと同じ速さ）。
@@ -35,9 +36,9 @@ const GRAVITY = 0.35;
 const JUMP = 6.2;
 const CAMERA_LEAD = 96;      // 主人公を画面の左からこれだけの所に置く
 
-// スプライトの割り当て。0番は主人公、1〜6番は敵、7〜14番はコイン。
+// スプライトの割り当て。0番と1番は主人公（多色なので二枚）、2〜7番は敵、8〜15番はコイン。
 const SPRITE_PLAYER = 0;
-const SPRITE_ENEMIES = 1;
+const SPRITE_ENEMIES = 2;
 const ENEMY_SLOTS = 6;
 const SPRITE_COINS = SPRITE_ENEMIES + ENEMY_SLOTS;
 const COIN_SLOTS = 8;
@@ -73,6 +74,8 @@ const create: WorkFactory = env => {
     let idle = 0;                       // 最後に人が触ってからのフレーム数
 
     let player = { x: 64, y: 100, vy: 0, onGround: false, blink: 0 };
+    let standing: MulticolorPattern;
+    let running: MulticolorPattern;
     let cameraX = 0;
 
     // 地面の高さ（区画の段数）。0 は穴。列は右へ進むたびに作り足す。
@@ -332,16 +335,17 @@ const create: WorkFactory = env => {
      */
     function place({ sprites }: Context): void {
         const sx = Math.round(player.x - cameraX);
-        const running = player.onGround && (frame >> 3) % 2 === 1;
+        const stride = player.onGround && (frame >> 3) % 2 === 1;
+        // 多色の組は hide で二枚とも隠れる。絵を替えるので毎回 setMulticolor で置き直す。
         if (player.blink > 0 && (frame >> 2) % 2 === 0) sprites.hide(SPRITE_PLAYER);
-        else sprites.set(SPRITE_PLAYER, { x: sx, y: Math.round(player.y), pattern: running ? 4 : 0, color: 13 });
+        else sprites.setMulticolor(SPRITE_PLAYER, { x: sx, y: Math.round(player.y), pattern: stride ? running : standing });
 
         const visible = (x: number) => x >= 0 && x <= 255;
         let slot = 0;
         for (const enemy of enemies) {
             const x = Math.round(enemy.x - cameraX);
             if (!visible(x) || slot >= ENEMY_SLOTS) continue;
-            const pattern = enemy.squashed ? 12 : (frame >> 4) % 2 ? 8 : 16;
+            const pattern = enemy.squashed ? 20 : (frame >> 4) % 2 ? 16 : 24;
             sprites.set(SPRITE_ENEMIES + slot++, { x, y: Math.round(enemy.y), pattern, color: 11 });
         }
         while (slot < ENEMY_SLOTS) sprites.hide(SPRITE_ENEMIES + slot++);
@@ -350,7 +354,7 @@ const create: WorkFactory = env => {
         for (const coin of items) {
             const x = Math.round(coin.x - cameraX);
             if (!visible(x) || slot >= COIN_SLOTS) continue;
-            sprites.set(SPRITE_COINS + slot++, { x, y: coin.y + ((frame >> 3) % 2), pattern: 20, color: 10 });
+            sprites.set(SPRITE_COINS + slot++, { x, y: coin.y + ((frame >> 3) % 2), pattern: 28, color: 10 });
         }
         while (slot < COIN_SLOTS) sprites.hide(SPRITE_COINS + slot++);
     }
@@ -378,27 +382,29 @@ const create: WorkFactory = env => {
             hud(ctx);
 
             sprites.setSize(16);
-            sprites.setPatternFromBitmap(0, [                   // 主人公・立ち
-                "......####......", ".....######.....",
-                ".....#.##.#.....", ".....######.....",
-                "......####......", "....########....",
-                "...##########...", "...#.######.#...",
-                "...#.######.#...", ".....######.....",
-                ".....##..##.....", ".....##..##.....",
-                ".....##..##.....", ".....##..##.....",
-                "....###..###....", "................"
+            // 主人公。数字は色。一行に三色なら一色は残り二色の OR（帽子の行は
+            // 11 と 4 と 15。11|4 = 15）。パターンは立ちが 0 と 4、走りが 8 と 12。
+            standing = sprites.setMulticolorPattern(0, [
+                "......bbbb......", ".....bb4fbbb....",
+                ".....c1cc1c.....", ".....cccccc.....",
+                "......cccc......", "....bbbbbbbb....",
+                "...bbbbbbbbbb...", "...c.dddddd.c...",
+                "...c.dddddd.c...", ".....dddddd.....",
+                ".....dd..dd.....", ".....dd..dd.....",
+                ".....dd..dd.....", ".....dd..dd.....",
+                "....999..999....", "................"
             ]);
-            sprites.setPatternFromBitmap(4, [                   // 主人公・走り
-                "......####......", ".....######.....",
-                ".....#.##.#.....", ".....######.....",
-                "......####......", "....########....",
-                "...##########...", "..##.######.##..",
-                ".....######.....", ".....######.....",
-                "....###..###....", "...###....###...",
-                "..###......##...", "..##.......###..",
+            running = sprites.setMulticolorPattern(8, [
+                "......bbbb......", ".....bb4fbbb....",
+                ".....c1cc1c.....", ".....cccccc.....",
+                "......cccc......", "....bbbbbbbb....",
+                "...bbbbbbbbbb...", "..cc.dddddd.cc..",
+                ".....dddddd.....", ".....dddddd.....",
+                "....ddd..ddd....", "...ddd....ddd...",
+                "..ddd......dd...", "..99.......999..",
                 "................", "................"
             ]);
-            sprites.setPatternFromBitmap(8, [                   // 敵・歩き1
+            sprites.setPatternFromBitmap(16, [                  // 敵・歩き1
                 "................", "................",
                 "................", ".....######.....",
                 "...##########...", "..############..",
@@ -408,7 +414,7 @@ const create: WorkFactory = env => {
                 "...###....###...", "..###......###..",
                 "................", "................"
             ]);
-            sprites.setPatternFromBitmap(16, [                  // 敵・歩き2
+            sprites.setPatternFromBitmap(24, [                  // 敵・歩き2
                 "................", "................",
                 "................", ".....######.....",
                 "...##########...", "..############..",
@@ -418,7 +424,7 @@ const create: WorkFactory = env => {
                 "....###..###....", "....###..###....",
                 "................", "................"
             ]);
-            sprites.setPatternFromBitmap(12, [                  // 敵・踏まれた
+            sprites.setPatternFromBitmap(20, [                  // 敵・踏まれた
                 "................", "................",
                 "................", "................",
                 "................", "................",
@@ -428,7 +434,7 @@ const create: WorkFactory = env => {
                 ".##############.", ".##..######..##.",
                 ".##############.", "................"
             ]);
-            sprites.setPatternFromBitmap(20, [                  // コイン
+            sprites.setPatternFromBitmap(28, [                  // コイン
                 "................", "................",
                 "................", "......####......",
                 ".....######.....", "....##.#####....",

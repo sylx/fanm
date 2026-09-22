@@ -191,7 +191,7 @@ AIのAPIキーとCloudflareの認証情報はバッチ処理が管理し、生�
 git submodule update --init
 npm install
 npm run typecheck
-npm run check:templates       # バッチ：5つのテンプレートをヘッドレスで動かして撮影
+npm run check:templates       # バッチ：型ごとのテンプレートをヘッドレスで動かして撮影
 npm run gallery:dev           # /work/<id>/ のHTML・React UIもプレビュー。テンプレートは /play.html?work=ambient
 npm run publish:local         # 公開物を var/site/ に組み立てる（どこへも送らない）
 npm run start:fake -- --once  # 偽のAIで制作の輪を一周（企画から公開物の組み立てまで）
