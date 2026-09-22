@@ -6,16 +6,14 @@
 //      縦の平面は256行の輪で、画面（212行）より44行大きい。これから画面の上端に
 //      入ってくる行は、いつもその見えていない44行のどこかにあるので、そこへ
 //      一行ずつ描き足す。一フレームに一行だけなので、ほとんど只で流れる。
-//   2. 見えていない44行は、平面の212〜255行目に来ることがある。gfx は画面の
-//      高さ（212行）の外へは描けないので、行はビデオメモリへ直に書く（paintRow）。
-//      G4 は一行128バイト、一バイトに2画素（上位4ビットが左）。
-//   3. 画面の上端の点数の帯は scroll.split で分け、ページ1を見せる。地上はページ2。
-//      スプライトの Y は画面の行で渡せばよい（縦スクロールの分はエンジンが足す）。
-//      ただしスプライトは帯ごとの y（R23）で位置が決まるので、帯どうしの y が違うと
-//      境目で千切れ、別の帯に幽霊が映る。だから点数の帯の y も地上と同じにして、
-//      点数の絵のほうを、帯が見ている行へ毎フレーム写す（showHud）。原本はページ3。
+//   2. 見えていない44行は、平面の212〜255行目に来ることがある。gfx はふだん画面の
+//      高さ（212行）で止まるので、init で gfx.offscreen = true にしておく。
+//   3. 画面の上端の点数の帯は scroll.split でページ0に分け、止めておく。地上は
+//      ページ2。スプライトの Y は画面の行で渡せばよい（縦スクロールの分はエンジンが
+//      足す）。点数の帯には sprites: false を付ける。付けないと、地上のスプライトが
+//      点数の帯に幽霊のように映る（帯ごとに y が違うため）。付けておけば、上から
+//      入ってくる敵も点数の帯の下から滑り出てくる。
 //   4. 動くもの（自機、弾、敵）はすべてスプライト。一行に並べられるのは8枚まで。
-//      ページ0は使わない。その下端にスプライトの表があるので、流す平面にしない。
 //
 // 誰も触らなくても遊びが進むこと。最初は機械が自分で避け、撃つ。
 
@@ -28,9 +26,6 @@ const SCREEN_BOTTOM = 212;
 /** 縦の平面の高さ。R23 は8ビットなので、画面の高さにかかわらず256で一周する。 */
 const PLANE_HEIGHT = 256;
 const PLANE_PAGE = 2;
-const HUD_PAGE = 1;                 // 点数の帯が見るページ。帯が見る行へ毎フレーム写す
-const HUD_MASTER_PAGE = 3;          // 点数の絵の原本。gfx で0行目から描く
-const LINE_BYTES = 128;             // G4 の一行。2画素で1バイト
 
 const PLAYER_SPEED = 2;
 const SHOT_SPEED = 6;
@@ -81,7 +76,6 @@ const create: WorkFactory = env => {
     let distance = 0;               // 進んだ行数。地上の世界の行でもある
     let painted = -1;               // 平面に描いた一番先の行
     let field: ScrollBand;
-    let hudBand: ScrollBand;
 
     let player = { x: 120, y: 176, blink: 0 };
     let shots: Shot[] = [];
@@ -130,14 +124,20 @@ const create: WorkFactory = env => {
 
     /**
      * 世界の行 row を平面に描く。行は平面の下から上へ並べる（row が一つ進むと
-     * 平面の行は一つ戻る）。gfx は212行目より下へは描けないので、ビデオメモリへ直に書く。
+     * 平面の行は一つ戻る）。同じ色が続く所は一本の横線にまとめる。
+     * 212行目より下にも描くので、gfx.offscreen を立てておくこと。
      */
-    function paintRow({ screen, bios }: Context, row: number): void {
-        const vram = bios.system.vdp.vram;
+    function paintRow({ screen, gfx }: Context, row: number): void {
         const line = (PLANE_HEIGHT - 1 - row) & 255;
-        const base = screen.pageBase(PLANE_PAGE) + line * LINE_BYTES;
-        for (let x = 0; x < 256; x += 2) {
-            vram[base + (x >> 1)] = (colorAt(x, row) << 4) | colorAt(x + 1, row);
+        screen.setDrawPage(PLANE_PAGE);
+        let start = 0;
+        let color = colorAt(0, row);
+        for (let x = 1; x <= 256; ++x) {
+            const next = x < 256 ? colorAt(x, row) : -1;
+            if (next === color) continue;
+            gfx.now.hline(start, line, x - start, color);
+            start = x;
+            color = next;
         }
     }
 
@@ -149,34 +149,20 @@ const create: WorkFactory = env => {
 
     /**
      * 縦スクロール。画面の最下行に世界の行 distance が来るようにする。帯の y は
-     * 「画面の一番上の行に平面のどの行を出すか」（R23 と同じ意味）。点数の帯も同じ y。
+     * 「画面の一番上の行に平面のどの行を出すか」（R23 と同じ意味）。
      */
     function aim(): void {
         field.y = (PLANE_HEIGHT - SCREEN_BOTTOM - distance) & 255;
-        hudBand.y = field.y;
     }
 
-    /** 点数の原本（ページ3の0行目から）。変わったときだけ gfx で描き直す。 */
+    /** 点数の帯（ページ0、止まったまま）。変わったときだけ描き直す。 */
     function hud({ screen, gfx }: Context): void {
         const text = over > 0 ? "GAME OVER" : `SCORE ${String(score).padStart(6, "0")}   SHIPS ${"A".repeat(Math.max(0, lives))}`;
         if (text === shown) return;
         shown = text;
-        screen.setDrawPage(HUD_MASTER_PAGE);
+        screen.setDrawPage(0);
         gfx.now.fillRect(0, 0, 256, HUD_HEIGHT, 8);
         gfx.now.text(8, 2, text, over > 0 ? 11 : 15);
-    }
-
-    /**
-     * 点数の帯が見ている行（ページ1の hudBand.y 行目から12行）へ原本を写す。
-     * y は毎フレーム動くので毎フレーム写す。12行で1.5KB、描き直しに比べれば只。
-     */
-    function showHud({ screen, bios }: Context): void {
-        const vram = bios.system.vdp.vram;
-        for (let line = 0; line < HUD_HEIGHT; ++line) {
-            const from = screen.pageBase(HUD_MASTER_PAGE) + line * LINE_BYTES;
-            const to = screen.pageBase(HUD_PAGE) + ((hudBand.y + line) & 255) * LINE_BYTES;
-            vram.copyWithin(to, from, from + LINE_BYTES);
-        }
     }
 
     // --- 空 ----------------------------------------------------------------
@@ -269,7 +255,7 @@ const create: WorkFactory = env => {
         player = { x: 120, y: 176, blink: 60 };
     }
 
-    /** スプライトは画面の行で置く。帯の y が揃っているので、点数の帯の上に重なってもよい。 */
+    /** スプライトは画面の行で置く。点数の帯に掛かった分は、帯が隠してくれる。 */
     function visible(y: number): boolean {
         return y > -16 && y < SCREEN_BOTTOM;
     }
@@ -302,18 +288,19 @@ const create: WorkFactory = env => {
 
     const app: App = {
         init(ctx) {
-            const { screen, scroll, sprites, bgm } = ctx;
+            const { screen, scroll, sprites, bgm, gfx } = ctx;
             screen.setMode("G4");
             screen.setPalette(PALETTE);
             screen.setBackdrop(0);
 
-            // 帯は二つ。上の点数の帯はページ1、その下の地上はページ2。y はどちらも同じ。
-            hudBand = scroll.split(0, { x: 0, page: HUD_PAGE });
+            // 平面の212〜255行目にも描き足すので、gfx が画面の下まで届くようにする。
+            gfx.offscreen = true;
+            // 帯は二つ。上の点数の帯はページ0で止め、スプライトは出さない。地上はページ2。
+            scroll.split(0, { x: 0, y: 0, page: 0, sprites: false });
             field = scroll.split(FIELD_TOP, { page: PLANE_PAGE });
             stream(ctx);
             aim();
             hud(ctx);
-            showHud(ctx);
 
             sprites.setSize(16);
             sprites.setPatternFromBitmap(0, [                   // 自機
@@ -435,7 +422,6 @@ const create: WorkFactory = env => {
             hit(ctx);
             place(ctx);
             hud(ctx);
-            showHud(ctx);
         }
     };
     return app;
