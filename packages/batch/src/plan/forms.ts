@@ -21,7 +21,9 @@ export const FORMS: readonly Form[] = [
     { id: "game", label: "ゲーム" },
     { id: "poem", label: "詩" },
     { id: "adventure", label: "アドベンチャー" },
-    { id: "rpg", label: "RPG" }
+    { id: "rpg", label: "RPG" },
+    { id: "action", label: "横スクロールアクション" },
+    { id: "shooter", label: "縦スクロールシューティング" }
 ];
 
 export const DEFAULT_FORM = FORMS[0];

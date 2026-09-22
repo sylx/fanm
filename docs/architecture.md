@@ -55,9 +55,11 @@ fanM/
 | 詩 | `templates/poem/` | 日本語の詩が一字ずつ現れる |
 | アドベンチャー | `templates/adventure/` | 上が一枚絵、下が文章の枠。選択肢で進む |
 | RPG | `templates/rpg/` | 地図を歩き、戦いの画面でコマンドを選ぶ |
+| 横スクロールアクション | `templates/action/` | 走って跳ぶ。地面はスクロールで流し、帯ごとの速さで視差を付ける |
+| 縦スクロールシューティング | `templates/shooter/` | 上へ飛んで撃つ。地上は入ってくる一行だけをビデオメモリへ描き足して流す |
 
 - 型ごとに `form.md`（AIへの手引き）、`work.ts`、`meta.json` を置く。型を増やすのは、ディレクトリを足して `plan/forms.ts` に一行足すだけ。
-- 選ぶのは `plan/forms.ts` の `pickForm`。直近15作の型を数え、少ないものから当てる。同数なら乱択。AIには選ばせない。
+- 選ぶのは `plan/forms.ts` の `pickForm`。直近（型の数×3）作の型を数え、少ないものから当てる。同数なら乱択。AIには選ばせない。
 - 選んだ型の `form.md` は企画（`plan.md` の `{{form}}`）と生成（`generate.md` の `{{form}}`）の両方に入り、`work.ts` が生成の実例（`{{template}}`）になる。
 - ジョブには型が残る（`job.form`）ので、途中で落ちて再開しても同じ型で続く。
 
