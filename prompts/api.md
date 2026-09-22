@@ -1,4 +1,4 @@
-# fantasy-msx API（7e71e92）
+# fantasy-msx API（bcf7219）
 
 このファイルは `npm run prompts:api` で生成する。手で編集しない。
 
@@ -179,6 +179,23 @@ sync. A sprite straddling two bands with different offsets is torn between
 them, as it is on the chip. The horizontal scroll never moves sprites, so x
 needs nothing.
 
+The other half of that bug is the **ghost**. A sprite is drawn wherever its Y
+meets the line being drawn plus R23, and a band with a different R23 is
+looking at different page lines - so a sprite well down a scrolled playfield
+can turn up in the status bar as well, whenever its page line comes round
+into the bar's. A band can switch sprites off for its own lines, which the
+line interrupt does with R8's SPD bit as it does the scroll:
+
+```ts
+scroll.split(0, { page: 0, sprites: false });    // no sprites, and so no ghosts, in the bar
+const field = scroll.split(24, { page: 2 });
+```
+
+A sprite reaching up into such a band from the one below is written against
+the band that shows it, so it slides out from under the bar in one piece.
+`sprites.setEnabled` still turns them all off; a band can only take them
+away.
+
 Two things the hardware insists on:
 
 - **The left edge.** R26 scrolls in whole groups of eight columns and R27
@@ -190,6 +207,19 @@ Two things the hardware insists on:
   plane that includes page 0 will scroll them into view. In SCREEN 5 there
   are pages 2 and 3 to use instead; in SCREEN 7 and 8 there are only two
   pages, and a plane that scrolls vertically has to live with them.
+
+**Drawing where only a scroll looks.** Drawing stops at the screen's last line,
+but a vertical scroll brings the rest of the page into view - lines 212 to
+255 in a 212-line mode - and that is exactly where the line about to scroll
+in has to be drawn while nobody can see it. `gfx.offscreen = true` lets
+`gfx` and `gfx.now` reach them. On page 0 it stops short of the sprite
+tables; `screen.pageLines(page)` says how far a page goes.
+
+```ts
+gfx.offscreen = true;
+screen.setDrawPage(2);
+gfx.now.hline(0, (255 - row) & 255, 256, color);  // the next line in, at the top
+```
 
 The scroll writes nothing until it is first used, so a program setting R23 or
 R26 through `vdp` by hand keeps them. `screen.setScroll(lines)` is the same as
@@ -573,6 +603,17 @@ export declare class Graphics {
      * is already on the page when it returns.
      */
     get now(): Raster;
+    /**
+     * Lets drawing reach below the screen, into the lines of the page that only
+     * a scroll shows - 212 to 255 in a 212-line mode, since R23 wraps at 256.
+     * That is where a vertical scroll's incoming line goes while nobody can see
+     * it. On the page that holds the sprite tables it stops short of them.
+     *
+     * Off by default: the whole screen, and every clip, stops at the screen's
+     * last line.
+     */
+    get offscreen(): boolean;
+    set offscreen(on: boolean);
     /** True while the blitter still has work. */
     get busy(): boolean;
     /** Queued jobs, including the one in progress. */
@@ -594,6 +635,7 @@ export declare class Graphics {
     setClip(x: number, y: number, width: number, height: number): void;
     /** Goes back to the whole screen, and keeps following it across mode changes. */
     resetClip(): void;
+    /** The clip as it applies to the draw page now: never past the lines drawing may reach. */
     get clip(): Readonly<Rect>;
     clear(color?: number): void;
     pixel(x: number, y: number, color: number): void;
@@ -648,16 +690,21 @@ export interface BlitOptions {
     fromPage?: number;
 }
 export declare class Raster {
+    /** Whether the lines below the screen are drawable (Graphics' `offscreen`). */
     /** VRAM address of the page being written. Set by whoever owns this rasteriser. */
     base: number;
     /** Clipping is owned by Graphics; setTarget is the only way to change it. */
     get clip(): Readonly<Rect>;
     constructor(vdp: Vdp, screen: Screen);
     /** Points this rasteriser at a page and a clip rectangle in one go. */
-    setTarget(base: number, clip: Rect): void;
+    setTarget(base: number, clip: Rect, offscreen?: boolean): void;
+    /** Lines of `page` this rasteriser may touch: the screen, or with `offscreen` the page's picture lines. */
     /** Pixels packed into one byte: 4 in GRAPHIC5, 2 in GRAPHIC4/6, 1 in GRAPHIC7. */
     /** Every bit of a colour the current mode can actually store. */
-    /** Fills the whole page, ignoring the clip rectangle. */
+    /**
+     * Fills the whole page, ignoring the clip rectangle: the screen's lines, or
+     * with `offscreen` every picture line of the page.
+     */
     clear(color?: number): void;
     pixel(x: number, y: number, color: number): void;
     getPixel(x: number, y: number, page?: number): number;
@@ -740,6 +787,13 @@ export declare class Screen {
     get height(): number;
     /** VRAM address where a page's framebuffer starts. */
     pageBase(page: number): number;
+    /**
+     * How many lines of a page hold picture: every line R23 can scroll into
+     * view (256, whatever the screen height), except on the page that holds the
+     * sprite tables, which stops at the line they start on. `gfx.offscreen`
+     * draws down to here. Outside the bitmap modes, just the screen.
+     */
+    pageLines(page: number): number;
     get displayPage(): number;
     get drawPage(): number;
     /** Points the raster at a page. Only R2 moves; the sprite tables stay where they are. */
@@ -794,11 +848,21 @@ export interface ScrollBand {
      * `wide` on, a page stands for the pair it belongs to: 0 and 1, 2 and 3.
      */
     page?: number;
+    /**
+     * False hides every sprite on the band's lines (R8's SPD, switched on the
+     * line interrupt). A status bar over a scrolling field wants it: otherwise
+     * a sprite whose page line comes round into the bar's lines shows up there
+     * too. A sprite reaching into such a band from one that shows sprites is
+     * placed against the band that shows it, so it slides in cleanly. Left out,
+     * sprites show as `sprites.setEnabled` has them.
+     */
+    sprites?: boolean;
 }
 export interface BandOptions {
     x?: number;
     y?: number;
     page?: number;
+    sprites?: boolean;
 }
 export declare class Scroll {
     /** Index of the band the next line interrupt brings in. */
@@ -807,6 +871,8 @@ export declare class Scroll {
      * Nothing is written until the scroll is first used, so a program setting
      * R23 or R26 by hand is not overwritten at every vertical sync.
      */
+    /** What `sprites.setEnabled` last asked for. Bands can only take sprites away. */
+    /** Whether the last band applied had R8's SPD in its charge. */
     constructor(vdp: Vdp, screen: Screen);
     /** Plane column at the left edge of the top band. */
     get x(): number;
@@ -853,16 +919,26 @@ export declare class Scroll {
     unsplit(band?: ScrollBand): void;
     /** The band covering a screen line. */
     at(line: number): ScrollBand;
+    /**
+     * The band a sprite `height` lines tall with its top on screen line `line`
+     * is written against: the one covering its top line, unless that band hides
+     * sprites - then the first band further down that shows them and begins
+     * within the sprite, so its lower part is drawn in the right place there.
+     * Null when the sprite lies wholly in bands that hide sprites: written
+     * against one of those it would be a ghost in some other band, so it is
+     * parked instead.
+     */
+    spriteBand(line: number, height: number): ScrollBand | null;
     /** Where a screen pixel is in the plane, through whichever band covers it. */
     toPlane(x: number, y: number): {
         x: number;
         y: number;
     };
     /**
-     * The first of `height` page lines that no band shows - somewhere a sprite
-     * can be parked without turning up in some other band. Looks from just
-     * below the bottom band onwards, and skips 208 and 216, which as a sprite's
-     * Y would end the sprite list.
+     * The first of `height` page lines that no band shows sprites on -
+     * somewhere a sprite can be parked without turning up in some other band.
+     * Looks from just below the bottom band onwards, and skips 208 and 216,
+     * which as a sprite's Y would end the sprite list.
      */
     unseenLine(height: number): number;
     /** Whether the scroll has been used, and so owns R23, R26, R27 and R19. */
@@ -908,6 +984,7 @@ export declare class Sprites {
     /** Table addresses follow the screen mode, since page sizes differ. */
     /** 8x8 or 16x16, optionally with every pixel doubled. */
     setSize(size: 8 | 16, magnified?: boolean): void;
+    /** All sprites on or off. A scroll band can still hide them on its own lines. */
     setEnabled(enabled: boolean): void;
     /**
      * Loads a pattern. Pass 8 rows of 8 bits for an 8x8 sprite, or 16 rows of
@@ -945,6 +1022,7 @@ export declare class Sprites {
      * nothing scrolls - but a band can point anywhere in the page, and a sprite
      * parked where one is looking would turn up in it.
      */
+    /** Lines a sprite covers on screen. */
     /**
      * Whether any two sprites overlapped, clearing the flag as the hardware
      * does. Read it once per frame: reading also clears the VBlank flag.
