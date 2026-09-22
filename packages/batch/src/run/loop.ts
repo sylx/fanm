@@ -245,7 +245,7 @@ export async function runLoop(options: LoopOptions): Promise<number> {
             if (meta.controls) fields.push({ name: "操作", value: meta.controls, inline: true });
             return {
                 title: meta.title,
-                url: `${site}/#${id}`,
+                url: `${site}/work/${encodeURIComponent(id)}/`,
                 description: meta.description,
                 color: COLOR.work,
                 timestamp: meta.createdAt,

@@ -1,13 +1,13 @@
 // 作品庫から公開物を組み立てる。<VAR>/site/ がそのまま公開する中身になる。
 //
-// 増えた作品と、まだ無いエンジンだけをビルドする。目録は毎回書き直すが、
-// これは小さなJSONひとつなので安い。ギャラリーの殻（index.html など）は
-// gallery パッケージのビルドを写す。
+// 増えた作品と、まだ無いエンジンだけをビルドする。索引と作品別メタデータ、
+// 分割した一覧を出力する。同じ中身は書き直さない。ギャラリーの殻は gallery のビルドを写す。
 
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { WorkMeta } from "@fanm/work";
 import { buildEngine, buildWork } from "./build.js";
+import { catalogFiles } from "../../../gallery/server/catalog.js";
 
 const ROOT = resolve(import.meta.dirname, "../../../..");
 const SHELL = join(ROOT, "packages/gallery/dist");
@@ -63,9 +63,25 @@ export async function assemble(worksDir: string, siteDir: string): Promise<Assem
     }
 
     const catalog: CatalogEntry[] = works
-        .map(w => ({ ...w.meta, work: `works/${w.id}/work.js`, thumb: `works/${w.id}/thumb.png` }))
+        .map(w => ({ ...w.meta, work: `/works/${w.id}/work.js`, thumb: `/works/${w.id}/thumb.png` }))
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     writeAtomic(join(siteDir, "works", "index.json"), JSON.stringify(catalog, null, 2));
+    const { index, files } = catalogFiles(catalog);
+    const indexPath = join(siteDir, "works", "catalog.json");
+    const previousPath = join(siteDir, "works", "catalog-previous.json");
+    const oldIndex = existsSync(indexPath) ? readFileSync(indexPath, "utf8") : null;
+    // 直前の索引を開いたタブが、新しい公開後も一覧を読めるよう二世代を残す。
+    if (oldIndex && JSON.parse(oldIndex).revision !== index.revision) writeAtomic(previousPath, oldIndex);
+    for (const [path, content] of files) writeAtomic(join(siteDir, path.slice(1)), content);
+    const keepChunks = new Set(index.items.map(item => item.chunk.split("/").at(-1)));
+    if (existsSync(previousPath)) {
+        const previous = JSON.parse(readFileSync(previousPath, "utf8")) as typeof index;
+        for (const item of previous.items) keepChunks.add(item.chunk.split("/").at(-1));
+    }
+    const chunksDir = join(siteDir, "works", "catalog");
+    if (existsSync(chunksDir)) {
+        for (const name of readdirSync(chunksDir)) if (!keepChunks.has(name)) rmSync(join(chunksDir, name));
+    }
 
     const removed = copyShell(siteDir);
     writeFileSync(join(siteDir, "_headers"), HEADERS);
@@ -85,10 +101,15 @@ const HEADERS = `/engine/*
   Cache-Control: public, max-age=31536000, immutable
 /fonts/*
   Cache-Control: public, max-age=31536000, immutable
+/works/catalog/*
+  Cache-Control: public, max-age=31536000, immutable
+/works/catalog.json
+  Cache-Control: no-cache
 `;
 
 /** 目録は最後に、一息で置き換える。読み手が半端な目録を見ないように。 */
 function writeAtomic(path: string, content: string): void {
+    if (existsSync(path) && readFileSync(path, "utf8") === content) return;
     mkdirSync(join(path, ".."), { recursive: true });
     writeFileSync(`${path}.tmp`, content);
     renameSync(`${path}.tmp`, path);

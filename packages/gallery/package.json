@@ -3,12 +3,14 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "description": "ギャラリーサイト。固定のプレイヤーと目録。Cloudflare Workersで配信する。閲覧時にAI APIは呼ばない。",
+  "description": "Workerの作品別HTML、Reactの目録、iframeプレイヤー。Cloudflare WorkersとStatic Assetsで配信する。",
   "scripts": {
     "dev": "vite",
     "build": "vite build"
   },
   "dependencies": {
-    "@fanm/work": "*"
+    "@fanm/work": "*",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
   }
 }

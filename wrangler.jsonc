@@ -1,5 +1,5 @@
 {
-    // ギャラリーサイトの公開先。静的アセットだけの Worker で、動くコードは持たない。
+    // ギャラリーサイトの公開先。作品HTMLは Worker、それ以外は Static Assets。
     //
     //     fanm publish  →  <VAR>/site/ を組み立てて、ここの設定で送る
     //
@@ -8,6 +8,13 @@
     // --assets で絶対パスを渡す。
     "$schema": "./node_modules/wrangler/config-schema.json",
     "name": "fanm",
+    "main": "packages/gallery/worker/index.ts",
+    "assets": {
+        "binding": "ASSETS",
+        "run_worker_first": ["/work/*"],
+        "not_found_handling": "none"
+    },
+    "version_metadata": { "binding": "VERSION" },
     "compatibility_date": "2026-09-20",
 
     // 公開するのはこのドメインだけ。workers.dev の名前と版ごとのプレビューURLは出さない。

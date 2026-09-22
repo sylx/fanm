@@ -7,3 +7,20 @@ export interface CatalogEntry extends WorkMeta {
     readonly work: string;
     readonly thumb: string;
 }
+
+/** 検索とランダム選択に使う索引。説明文や再生情報は必要な分だけ取得する。 */
+export interface CatalogItem {
+    readonly id: string;
+    readonly title: string;
+    readonly createdAt: string;
+    readonly model?: string;
+    readonly chunk: string;
+}
+
+export interface CatalogIndex {
+    readonly revision: string;
+    readonly items: readonly CatalogItem[];
+}
+
+export const PAGE_SIZE = 24;
+export const workURL = (id: string): string => `/work/${encodeURIComponent(id)}/`;

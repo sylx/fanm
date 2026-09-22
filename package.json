@@ -26,10 +26,15 @@
     "prompts:api": "tsx packages/batch/src/generate/api-docs.ts",
     "engine:pin": "git -C engine/fantasy-msx rev-parse HEAD > engine/COMMIT",
     "gallery:dev": "npm run dev -w @fanm/gallery",
-    "gallery:build": "npm run build -w @fanm/gallery"
+    "gallery:build": "npm run build -w @fanm/gallery",
+    "gallery:test": "node --import tsx --test --test-isolation=none packages/gallery/test/worker.test.ts",
+    "gallery:test:browser": "playwright test --config packages/gallery/playwright.config.ts"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/node": "^24.0.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
     "vite": "^5.4.0",

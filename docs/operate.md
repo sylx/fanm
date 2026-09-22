@@ -68,7 +68,7 @@ docker exec -it <container> node_modules/.bin/tsx packages/batch/src/cli.ts make
 
 | embed | どこから | 見え方 |
 | --- | --- | --- |
-| 題 | `meta.title` | 押すと `<siteUrl>/#<id>` が開く |
+| 題 | `meta.title` | 押すと `<siteUrl>/work/<id>/` が開く |
 | 説明 | `meta.description` | |
 | 絵 | `<siteUrl>/works/<id>/thumb.png` | 一件だけなら大きく、並ぶときは右上に小さく |
 | 長さ・操作 | `meta.durationFrames` / `meta.controls` | 横に並ぶ。操作できない作品に「操作」は出さない |

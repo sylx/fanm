@@ -3,5 +3,5 @@
   "compilerOptions": {
     "types": ["node", "vite/client"]
   },
-  "include": ["packages/*/src", "templates"]
+  "include": ["packages/*/src", "packages/gallery/server", "packages/gallery/worker", "packages/gallery/vite.config.ts", "templates"]
 }

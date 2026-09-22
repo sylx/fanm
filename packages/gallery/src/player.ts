@@ -50,11 +50,10 @@ async function loadDotFont(): Promise<void> {
 }
 
 async function fromCatalog(id: string): Promise<Loaded | null> {
-    const response = await fetch("works/index.json").catch(() => null);
+    const response = await fetch(`/works/${encodeURIComponent(id)}/meta.json`).catch(() => null);
     if (!response?.ok) return null;
     // 開発サーバーは無いパスに index.html を返すので、JSON とは限らない。
-    const catalog = await response.json().catch(() => null) as CatalogEntry[] | null;
-    const entry = catalog?.find(w => w.id === id);
+    const entry = await response.json().catch(() => null) as CatalogEntry | null;
     if (!entry) return null;
     const [work, engine] = await Promise.all([
         import(/* @vite-ignore */ url(entry.work)),
@@ -69,7 +68,8 @@ async function fromDisk(id: string): Promise<Loaded | null> {
     const { load } = await import("./dev-works.js");
     const factory = await load(id);
     if (!factory) return null;
-    return { factory, seed: 1, engine: await import("fantasy-msx") };
+    const meta = await fetch(`/works/${encodeURIComponent(id)}/meta.json`).then(response => response.ok ? response.json() as Promise<CatalogEntry> : null).catch(() => null);
+    return { factory, seed: meta?.seed ?? 1, engine: await import("fantasy-msx") };
 }
 
 /** 入る中で一番大きい整数倍。窓が小さくても 1 は下回らない。 */

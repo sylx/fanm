@@ -15,7 +15,7 @@ fanMは、作品を作る側と見せる側の二つに分かれます。
 | | 役割 | 動く場所 | ディレクトリ |
 | --- | --- | --- | --- |
 | **バッチ処理** | 企画、生成、検証、修正、予算管理、作品の保存、公開 | ホスト「chevron」上で、Coolifyが管理するコンテナとして常駐 | `packages/batch` |
-| **ギャラリーサイト** | 作品の目録、サムネイル、ブラウザでの再生 | Cloudflare Workers（静的アセットの配信） | `packages/gallery` |
+| **ギャラリーサイト** | 作品の目録、サムネイル、ブラウザでの再生 | Cloudflare Workers（作品HTML生成・静的アセット配信） | `packages/gallery` |
 
 二つは直接は通信しません。バッチ処理が作品をギャラリー用の静的ファイルとして書き出し、Cloudflareへ送ります。ギャラリーは閲覧時にAIのAPIを呼ばず、バッチ処理が止まっていても表示できます。
 
@@ -64,7 +64,7 @@ Cloudflare Workers
       → ブラウザ上でfantasy-msxを実行
 ```
 
-ギャラリーには静的ファイルだけを置きます。生成頻度と公開頻度は分け、複数作品をまとめて公開できるようにします。作品はWorkersの静的アセットとして送ります（`wrangler deploy`）。一度出したファイルは中身も名前も変わらないので、作品が増えても送られるのは増えた分だけです。公開先は `fanm.oyabanare.com`、手順は [docs/deploy.md](docs/deploy.md) にあります。
+ギャラリーの作品HTMLはWorkerが生成し、作品・エンジン・一覧データは静的ファイルとして配信します。生成頻度と公開頻度は分け、複数作品をまとめて公開できるようにします。作品はWorkersの静的アセットとして送ります（`wrangler deploy`）。一度出したファイルは中身も名前も変わらないので、作品が増えても送られるのは増えた分だけです。公開先は `fanm.oyabanare.com`、手順は [docs/deploy.md](docs/deploy.md) にあります。
 
 特定のAI事業者や公開先への依存は、接続部分に閉じ込めます。
 
@@ -192,7 +192,7 @@ git submodule update --init
 npm install
 npm run typecheck
 npm run check:templates       # バッチ：5つのテンプレートをヘッドレスで動かして撮影
-npm run gallery:dev           # ギャラリー：play.html?work=ambient でテンプレートを再生
+npm run gallery:dev           # /work/<id>/ のHTML・React UIもプレビュー。テンプレートは /play.html?work=ambient
 npm run publish:local         # 公開物を var/site/ に組み立てる（どこへも送らない）
 npm run start:fake -- --once  # 偽のAIで制作の輪を一周（企画から公開物の組み立てまで）
 npm start                     # 常駐して作り続ける。本番（Coolify）が動かすのもこれ

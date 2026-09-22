@@ -3,7 +3,7 @@
 fanM は二つの部分に分かれる。
 
 - **バッチ処理**（`packages/batch`）— 作品を作る。chevron 上で Coolify が管理するコンテナとして常駐する。
-- **ギャラリーサイト**（`packages/gallery`）— 作品を見せる。Cloudflare Workers で静的に配信する。
+- **ギャラリーサイト**（`packages/gallery`）— 作品を見せる。作品HTMLはCloudflare Workerで生成し、画像・JS・目録はStatic Assetsで配信する。
 
 二つをつなぐのは作品形式（`packages/work`）とエンジン（`engine/fantasy-msx`）だけ。
 
@@ -88,12 +88,16 @@ var/site/                        これがそのまま公開する中身
 ├─ engine/<commit>.js            エンジン。コミットごとに一つ（213KB）
 ├─ works/<id>/work.js            作品。エンジンを含まず 3KB 程度
 ├─ works/<id>/thumb.png          サムネイル
-└─ works/index.json              目録。新しい順。毎回書き直す（小さい）
+├─ works/<id>/meta.json          一作品の再生情報・説明
+├─ works/catalog.json            検索・年月選択・ランダム再生の軽量索引
+├─ works/catalog/<hash>.json      一覧情報。古い順で96件ずつに分割
+└─ works/index.json              旧クライアント互換の全件目録
 ```
 
-- 作品は `import { ... } from "fantasy-msx"` を `../../engine/<commit>.js` への import に置き換えてビルドする（`publish/build.ts`）。プレイヤーも目録の `engine` を見て同じファイルを動的に読む。**プレイヤーがエンジンを静的に import してはいけない**。二つ目のエンジンが混ざる。
+- 作品は `import { ... } from "fantasy-msx"` を `../../engine/<commit>.js` への import に置き換えてビルドする（`publish/build.ts`）。プレイヤーも作品別メタデータの `engine` を見て同じファイルを動的に読む。**プレイヤーがエンジンを静的に import してはいけない**。二つ目のエンジンが混ざる。
 - だからエンジンを更新しても、過去の作品はビルドし直さずに動く。新しいコミットの `engine/*.js` が一つ増えるだけ。
-- ギャラリーは目録だけを読み、作品は選ばれたときに iframe の中で動的に読む。
+- ギャラリーは軽量索引と表示ページに必要な塊だけを読む。カードは24件で入れ替え、作品は選択時だけiframe内で読む。作品別URLは `/work/<id>/`。旧 `/#<id>` はブラウザ側で新URLへ移す。
+- 塊は古い順なので、新作追加で既存の満杯の塊は変わらない。ファイル名に内容のハッシュを使い、現行と直前の索引が参照する塊を保持する。それ以前のタブで塊がなくなった場合は一覧の再読み込みを案内する。
 - 殻を写したあと、殻が持たなくなったファイル（ビルドし直して名前が変わった `assets/` の古い版）は消す。作品とエンジンは殻の外で増えるので触らない。
 
 組み立てた `var/site/` は、そのまま Cloudflare Workers の静的アセットとして `fanm.oyabanare.com` へ送る（`publish/publisher.ts` が `wrangler deploy --assets` を呼ぶ）。一度出したファイルは中身も名前も変わらないので、送られるのは増えた分だけ。設定と初回の手順は [deploy.md](deploy.md)。
@@ -120,7 +124,7 @@ npm run publish:local               # 組み立てるところまで（送らな
 | 部分 | できていること | まだないもの |
 | --- | --- | --- |
 | バッチ | `fanm make`：企画 → 生成 → 検査 → 修正（最大2回）→ 採用/不採用 を一つのジョブとして回す。ジョブ状態と予算台帳を保存し、途中から再開できる。DeepSeek・Claude・OpenAI の接続、APIキーなしで試す偽のAI（`--fake`）。頼む相手はジョブごとに札束（`providers/deck.ts`）から引く。検査は静的検査・書き写しの検査・型検査・隔離実行・撮影・画面の数値判定。企画には型のほかに縛り（`plan/variations.ts`）を引いて渡し、実例はデータを抜いて渡す。`fanm run`：残予算と実費から頻度を決めて回し続け、頃合いを見て公開し、直らない問題だけ知らせる。設定は30秒ごとに読み直すので、予算・頻度・札束は動かしたまま変えられる。`fanm status` と Dockerfile／docker-compose.yaml（[docs/operate.md](operate.md)） | 不採用作の掃除、ブラウザでの確認、Coolify への初回デプロイ |
-| ギャラリー | サムネイルの一覧、作品ごとのURL（`#<id>`）、ランダム再生、iframe の中での動的読込。開発時は未ビルドの手元の作品も再生できる | 連続再生、お気に入り |
+| ギャラリー | Reactの24件ごとの一覧・検索・年月選択、Workerの作品別HTML（`/work/<id>/`）とOGP、ランダム連続再生、iframeの動的読込。`gallery:dev`で同じHTML生成と未ビルド作品をプレビューできる | お気に入り |
 | つなぎ | `fanm publish` が `<VAR>/site/` に公開物を組み立て、Cloudflare Workers（`fanm.oyabanare.com`）へ送る。作品とエンジンは増えた分だけビルドし、送るのも増えた分だけ。常駐はこれを既定6時間おきに、送っていない作品があるときだけ呼ぶ | 公開頻度の実測に基づく調整 |
 
 ## バッチの制作状態（`<VAR>`、既定は `var/`、`FANM_VAR` で変更）

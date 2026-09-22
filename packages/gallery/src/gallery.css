@@ -1,0 +1,105 @@
+:root { color-scheme: dark; --bg: #0b0b10; --fg: #e8e6f0; --dim: #8d89a5; --line: #23222e; }
+* { box-sizing: border-box; }
+body { margin: 0; padding: 0 16px 48px; background: var(--bg); color: var(--fg);
+       font: 15px/1.6 system-ui, sans-serif; }
+header { display: flex; align-items: center; gap: 16px; max-width: 1100px;
+         margin: 0 auto; padding: 24px 0 16px; }
+h1 { margin: 0; line-height: 0; }
+/* 題字はロゴの絵そのもの。高さだけ決めて、幅は絵の比に任せる。 */
+h1 img { height: 34px; width: auto; display: block; }
+header p { color: var(--dim); margin: 0; font-size: 13px; }
+a { color: inherit; }
+main { max-width: 1100px; margin: 0 auto; }
+#stage { margin: 0 0 32px; }
+/* VDP の一画面は 272x228。同じ比にしておくと、プレイヤーが整数倍で
+   出したときの余白が最小で済む。 */
+#stage iframe { width: min(100%, 818px); aspect-ratio: 272 / 228; margin: 0 auto;
+                border: 1px solid var(--line); background: #000; display: block; }
+#close { white-space: nowrap; text-decoration: none; padding: 2px 8px;
+         border: 1px solid var(--line); border-radius: 4px; }
+#close:hover, #close:focus-visible { color: var(--fg); border-color: var(--fg); }
+ul { list-style: none; display: grid; gap: 16px; padding: 0; margin: 0;
+     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+/* 紹介文は途中で切らずに全部出す。高さは行ごとに揃えたいので、カードは
+   升目いっぱいに伸ばし、日付を最後の行に落として下端を合わせる。 */
+.card { display: grid; grid-template-rows: auto auto 1fr auto; gap: 4px;
+        width: 100%; height: 100%; text-align: left; cursor: pointer;
+        background: none; border: 1px solid var(--line); border-radius: 6px;
+        padding: 8px; color: inherit; font: inherit; }
+.card:hover, .card:focus-visible { border-color: var(--fg); }
+/* 昔のゲーム雑誌の画面写真のように、ブラウン管を撮ったぼやけた絵にする。
+   絵そのものは少しにじませて明るく色を濃くし、上に走査線と周辺の減光を
+   重ねる。img には疑似要素が付かないので、枠の span に重ねる。 */
+.card .crt { position: relative; display: block; overflow: hidden;
+             aspect-ratio: 4 / 3; background: #000; border-radius: 8px / 10px; }
+.card .crt img { width: 100%; height: 100%; object-fit: contain; display: block;
+                 filter: blur(.7px) brightness(1.15) contrast(1.2) saturate(1.35);
+                 transform: scale(1.02); }
+.card .crt::before, .card .crt::after { content: ""; position: absolute; inset: 0;
+                                        pointer-events: none; }
+.card .crt::before {
+  background: repeating-linear-gradient(to bottom,
+    rgba(0, 0, 0, 0) 0, rgba(0, 0, 0, 0) 1px, rgba(0, 0, 0, .28) 2px, rgba(0, 0, 0, 0) 3px);
+}
+.card .crt::after {
+  background:
+    radial-gradient(ellipse at 30% 22%, rgba(255, 255, 255, .10), rgba(255, 255, 255, 0) 40%),
+    radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 55%, rgba(0, 0, 0, .55) 100%);
+  box-shadow: inset 0 0 18px rgba(0, 0, 0, .7);
+  border-radius: inherit;
+}
+.card strong { font-weight: 600; letter-spacing: .08em; }
+.card span { color: var(--dim); font-size: 13px; }
+/* 最後の行。日付は左、書いたAIの名前は右。名前が長いときは字を詰める
+   ばかりで、日付を押し出さない。 */
+.card .foot { display: flex; align-items: baseline; justify-content: space-between;
+              gap: 8px; color: var(--dim); font-size: 12px; padding-top: 4px; }
+.card time { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.card .model { font-size: 11px; letter-spacing: .04em; text-align: right;
+               overflow-wrap: anywhere; }
+/* iPhone のような細い画面では升目が一列きりになり、絵を字の上に敷くと
+   一枚で画面がほとんど埋まってしまう。絵を小さくして左へ寄せ、字をその
+   右に回り込ませて、一枚あたりの縦を詰める。絵は行をまたいで立てに通し、
+   字は右の列だけを上から順に使う。 */
+@media (max-width: 560px) {
+  ul { grid-template-columns: 1fr; gap: 12px; }
+  .card { grid-template-columns: 104px 1fr; grid-template-rows: auto 1fr auto;
+          column-gap: 10px; }
+  .card .crt { grid-column: 1; grid-row: 1 / -1; align-self: start; }
+  .card strong, .card span, .card .foot { grid-column: 2; }
+}
+/* ランダム再生の切り替え。押されているあいだは字を明るくして、
+   流れ続けていることを見せる。 */
+#random { padding: 2px 8px; cursor: pointer; background: none; color: var(--dim);
+          border: 1px solid var(--line); border-radius: 4px; font: inherit; }
+#random:hover, #random:focus-visible { color: var(--fg); border-color: var(--fg); }
+#random[aria-pressed="true"] { color: var(--fg); border-color: var(--fg); }
+
+footer {
+  margin-top: 48px;
+  display: flex;
+  justify-content: center;
+  color: var(--dim);
+  align-items: flex-end;
+  p { margin: 0; font-size: 13px; }
+  img { height: 64px; width: auto; margin-right: 8px; }
+}
+
+[hidden] { display: none !important; }
+#work-info h2 { margin-bottom: 4px; font-size: 22px; }
+#work-description { max-width: 72ch; margin-top: 0; }
+#work-date { color: var(--dim); font-size: 13px; }
+.toolbar, .filters, .pagination, .player-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 16px 0; }
+.filters label { display: grid; gap: 4px; font-size: 13px; color: var(--dim); }
+.filters input, .filters select, .pagination button, .toolbar button, .player-actions a, .player-actions button { background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 4px; padding: 8px 12px; font: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: default; opacity: .4; }
+.card { text-decoration: none; }
+.card[aria-current="true"] { border-color: var(--fg); }
+.pagination { justify-content: center; }
+#catalog-heading { font-size: 18px; }
+.status { color: var(--dim); }
+.error { color: #ffb5ad; }
+#stage { scroll-margin-top: 16px; }
+#stage iframe { max-height: 80vh; }
+#catalog-region { scroll-margin-top: 16px; }

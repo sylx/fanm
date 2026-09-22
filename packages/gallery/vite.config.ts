@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { defineConfig, type Plugin } from "vite";
+import { galleryDev } from "./server/dev.js";
 
 const root = (path: string) => fileURLToPath(new URL(`../../${path}`, import.meta.url));
 
@@ -59,40 +60,12 @@ function socialPreview(): Plugin {
     };
 }
 
-/**
- * 作品庫を見張る。<VAR>/works/ は vite の管理下の外にあるので、作品が増えても
- * dev-catalog.ts / dev-works.ts の glob は古いままになる。作った作品が
- * 開発サーバーに出てこないので、増減を見つけたら読み直させる。
- */
-function watchArchive(): Plugin {
-    const archive = root("var/works");
-    const dependents = ["src/dev-catalog.ts", "src/dev-works.ts"].map(file => root(`packages/gallery/${file}`));
-
-    return {
-        name: "fanm-watch-archive",
-        apply: "serve",
-        configureServer(server) {
-            server.watcher.add(archive);
-            const changed = (path: string) => {
-                if (!path.startsWith(archive)) return;
-                for (const file of dependents) {
-                    const module = server.moduleGraph.getModuleById(file);
-                    if (module) server.moduleGraph.invalidateModule(module);
-                }
-                server.ws.send({ type: "full-reload" });
-            };
-            server.watcher.on("add", changed);
-            server.watcher.on("unlink", changed);
-        }
-    };
-}
-
 export default defineConfig({
-    base: "./",
+    base: "/",
     // 作品が日本語を出すためのドット面（JF Dot K12x10）。エンジンに同梱された
     // ものをそのまま配る。写しを持たないので、エンジンを更新すれば追従する。
     publicDir: root("engine/fantasy-msx/public"),
-    plugins: [watchArchive(), socialPreview()],
+    plugins: [galleryDev(root("")), socialPreview()],
     resolve: {
         alias: [
             { find: /^fantasy-msx$/, replacement: root("engine/fantasy-msx/src/index.ts") },
