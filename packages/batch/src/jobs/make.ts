@@ -14,6 +14,8 @@ import { checkWork, type CheckReport } from "../check/check.js";
 import type { Config, ProviderConfig } from "../config.js";
 import { FormatError, generateRequest, parseFiles, type PastAttempt } from "../generate/generator.js";
 import { formOf, pickForm } from "../plan/forms.js";
+import { penName } from "../persona/pen-name.js";
+import { drawTraits, personaBrief } from "../persona/persona.js";
 import { parsePlan, planRequest } from "../plan/planner.js";
 import { drawTwist } from "../plan/variations.js";
 import { template } from "../prompts.js";
@@ -56,12 +58,29 @@ function deltas(log: Log): OnDelta {
  */
 function draw(ctx: MakeContext, job: Job): ProviderConfig {
     const kept = ctx.deck.find(e => e.model === job.model);
-    if (kept) return kept;
+    if (kept) {
+        // 性格を持たせる前に企画まで進んでいたジョブには、途中から着せない。
+        if (!job.persona && !job.plan) cast(ctx, job, kept);
+        return kept;
+    }
     const entry = drawProvider(ctx.deck, ctx.archive.models(), createRandom(job.seed ^ 0xdec4));
     job.model = entry.model;
-    ctx.jobs.save(job);
     ctx.log.line(`${job.id}: 頼む相手は ${entry.name} の ${entry.model}`);
+    // 名前はモデルごとなので、相手を引き直したら作り手も引き直す。
+    cast(ctx, job, entry);
     return entry;
+}
+
+/**
+ * 作り手の性格を引き、名前を付けてジョブに残す。性格はジョブの種から引くので、
+ * 相手を引き直しても性格は同じで、名前だけがその相手の言葉に変わる。
+ */
+function cast(ctx: MakeContext, job: Job, entry: ProviderConfig): void {
+    const traits = drawTraits(createRandom(job.seed ^ 0x9e75));
+    const persona = { penName: penName(entry.name, entry.model, traits, ctx.archive.authors()), traits };
+    job.persona = persona;
+    ctx.jobs.save(job);
+    ctx.log.line(`${job.id}: 作り手は ${personaBrief(persona)}`);
 }
 
 export async function make(base: MakeContext, job: Job): Promise<Job> {
@@ -97,7 +116,7 @@ async function plan(ctx: Making, job: Job): Promise<void> {
     const twist = drawTwist(form.id, past, createRandom(job.seed ^ 0x7c157));
     ctx.log.line(`${job.id}: 型は${form.label}、縛りは ${twist.map(t => `${t.axis}=${t.option}`).join(" / ")}`);
     const result = await call(ctx.provider, ctx.ledger, job.id, "plan",
-        planRequest(past, form, twist, ctx.config.generation.planMaxTokens), deltas(ctx.log));
+        planRequest(past, form, twist, job.persona, ctx.config.generation.planMaxTokens), deltas(ctx.log));
     job.calls.push(result.log);
     try {
         job.plan = parsePlan(result.text, form, twist);
@@ -134,7 +153,7 @@ async function generate(ctx: Making, job: Job): Promise<void> {
     const { generation } = ctx.config;
     // 前回、思考だけで出力上限に達していたら、思考を切って頼み直す。
     const thinkingRanAway = (job.emptyResponses ?? 0) > 0;
-    const request = generateRequest(job.plan!, pastAttempts(ctx, job), {
+    const request = generateRequest(job.plan!, job.persona, pastAttempts(ctx, job), {
         maxOutputTokens: generation.generateMaxTokens,
         reasoningEffort: thinkingRanAway ? "none" : generation.reasoningEffort
     });

@@ -83,6 +83,13 @@ export interface WorkMeta extends WorkDescription {
      * 作品を見分けられるように残す。モデル名を記録する前の作品にはない。
      */
     readonly model?: string;
+    /**
+     * 作り手のペンネーム。同じモデルで同じ性格なら同じ名前（batch の persona/）。
+     * 性格を持たせる前の作品にはない。
+     */
+    readonly penName?: string;
+    /** 作り手の性格。軸の id → 値。軸が増える前の作品には、新しい軸の値がない。 */
+    readonly traits?: Readonly<Record<string, number | string>>;
     readonly seed: number;
     readonly thumbnail: string;
 }

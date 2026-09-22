@@ -11,6 +11,7 @@
 import type { WorkDescription } from "@fanm/work";
 import type { Plan } from "../plan/planner.js";
 import type { CompletionRequest, Message } from "../providers/provider.js";
+import { personaPrompt, type Persona } from "../persona/persona.js";
 import { formOf } from "../plan/forms.js";
 import { fill, formBrief, prompt, system, template } from "../prompts.js";
 import { avoidBrief, thin } from "./example.js";
@@ -24,6 +25,7 @@ export interface PastAttempt {
 
 export function generateRequest(
     plan: Plan,
+    persona: Persona | undefined,
     past: readonly PastAttempt[],
     options: { maxOutputTokens: number; reasoningEffort: CompletionRequest["reasoningEffort"] }
 ): CompletionRequest {
@@ -35,6 +37,7 @@ export function generateRequest(
             content: fill(prompt("generate.md"), {
                 form: formBrief(formOf(plan.form).id),
                 plan: JSON.stringify(plan, null, 2),
+                persona: personaPrompt(persona),
                 // 実例はデータを抜いて渡す。そのまま渡すと写しが返ってくる。
                 template: thin(example),
                 avoid: avoidBrief(example)

@@ -2,6 +2,7 @@
 // 過去の全コードや会話履歴は渡さない。
 
 import type { CompletionRequest } from "../providers/provider.js";
+import { personaPrompt, type Persona } from "../persona/persona.js";
 import { fill, formBrief, prompt, system } from "../prompts.js";
 import { formOf, type Form } from "./forms.js";
 import { twistBrief, type Twist } from "./variations.js";
@@ -37,6 +38,8 @@ export function planRequest(
     past: readonly Plan[],
     form: Form,
     twist: readonly Twist[],
+    /** 作り手。性格を持たせる前のジョブには無い。 */
+    persona: Persona | undefined,
     maxOutputTokens: number,
     /**
      * 企画は散らしたいが、上げすぎると日本語が壊れる。実測（DeepSeek V4 Pro、2026-09）:
@@ -50,7 +53,8 @@ export function planRequest(
     const content = fill(prompt("plan.md"), {
         past: list,
         form: formBrief(form.id),
-        twist: twistBrief(twist)
+        twist: twistBrief(twist),
+        persona: personaPrompt(persona)
     });
     return {
         messages: [system(), { role: "user", content }],

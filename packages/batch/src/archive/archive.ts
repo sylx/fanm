@@ -13,6 +13,7 @@ import { join, resolve } from "node:path";
 import type { WorkDescription, WorkMeta } from "@fanm/work";
 import type { CheckReport } from "../check/check.js";
 import type { Job } from "../jobs/job.js";
+import type { KnownAuthor } from "../persona/pen-name.js";
 import type { Plan } from "../plan/planner.js";
 
 const ROOT = resolve(import.meta.dirname, "../../../..");
@@ -65,6 +66,8 @@ export class Archive {
             createdAt: new Date().toISOString(),
             engine: engineCommit(),
             model: modelOf(job),
+            penName: job.persona?.penName,
+            traits: job.persona?.traits,
             seed: job.seed,
             thumbnail: "thumbnail.png"
         };
@@ -128,6 +131,17 @@ export class Archive {
             .slice(0, limit)
             .map(id => this.meta(id).model)
             .filter((model): model is string => !!model);
+    }
+
+    /**
+     * 作品庫に出たことのある作り手。ペンネームの台帳として読む（persona/pen-name.ts）。
+     * 性格を持たせる前の作品は数えない。
+     */
+    authors(): KnownAuthor[] {
+        return this.ids()
+            .map(id => this.meta(id))
+            .filter(meta => meta.model && meta.penName && meta.traits)
+            .map(meta => ({ model: meta.model!, traits: meta.traits!, penName: meta.penName! }));
     }
 
     /** 採用済み作品の企画。新しい順。企画の偏りを避けるために使う。 */

@@ -11,6 +11,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { CallLog } from "../providers/call.js";
+import type { Persona } from "../persona/persona.js";
 import type { Plan } from "../plan/planner.js";
 
 export type JobState = "planning" | "generating" | "checking" | "accepted" | "rejected";
@@ -31,6 +32,8 @@ export interface Job {
     form?: string;
     /** 頼む相手のモデル名。型と同じく企画の前に引き、やり直しても変わらない。 */
     model?: string;
+    /** 作り手の性格とペンネーム。相手と一緒に引き、相手を引き直したら引き直す。 */
+    persona?: Persona;
     plan?: Plan;
     attempts: Attempt[];
     calls: CallLog[];
