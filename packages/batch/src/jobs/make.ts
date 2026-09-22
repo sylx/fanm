@@ -72,15 +72,23 @@ function draw(ctx: MakeContext, job: Job): ProviderConfig {
 }
 
 /**
- * 作り手の性格を引き、名前を付けてジョブに残す。性格はジョブの種から引くので、
- * 相手を引き直しても性格は同じで、名前だけがその相手の言葉に変わる。
+ * 作り手を決めてジョブに残す。persona.reuse の割合で、この相手の過去の作り手を
+ * 呼び戻す。それ以外は性格を引き、名前を付ける。どちらもジョブの種から引くので、
+ * 落ちて再開しても同じ作り手になる。相手を引き直したときは、その相手の作り手で
+ * 決め直す（名前はモデルごとのため）。
  */
 function cast(ctx: MakeContext, job: Job, entry: ProviderConfig): void {
-    const traits = drawTraits(createRandom(job.seed ^ 0x9e75));
-    const persona = { penName: penName(entry.name, entry.model, traits, ctx.archive.authors()), traits };
+    const known = ctx.archive.authors();
+    const random = createRandom(job.seed ^ 0x2e05);
+    const regulars = [...new Map(known.filter(a => a.model === entry.model).map(a => [a.penName, a])).values()];
+    const returning = regulars.length > 0 && random() < ctx.config.persona.reuse
+        ? regulars[Math.floor(random() * regulars.length)]
+        : undefined;
+    const traits = returning?.traits ?? drawTraits(createRandom(job.seed ^ 0x9e75));
+    const persona = { penName: returning?.penName ?? penName(entry.name, entry.model, traits, known), traits };
     job.persona = persona;
     ctx.jobs.save(job);
-    ctx.log.line(`${job.id}: 作り手は ${personaBrief(persona)}`);
+    ctx.log.line(`${job.id}: 作り手は ${personaBrief(persona)}${returning ? "（再登場）" : ""}`);
 }
 
 export async function make(base: MakeContext, job: Job): Promise<Job> {

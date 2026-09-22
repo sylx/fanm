@@ -48,6 +48,13 @@ export interface Config {
         readonly attemptsPerDay: number;
         readonly maxRepairs: number;
     };
+    readonly persona: {
+        /**
+         * 過去の作り手を呼び戻す割合（0〜1）。引いた相手（モデル）に採用作のある
+         * 作り手がいれば、この割合でその中から一人を選び、残りは性格を新しく引く。
+         */
+        readonly reuse: number;
+    };
     readonly publish: {
         /** 送り先。"none" なら <VAR>/site/ を組み立てるだけで、どこへも送らない。 */
         readonly target: "cloudflare" | "none";
@@ -75,6 +82,9 @@ export const DEFAULTS: Config = {
     generation: { planMaxTokens: 4000, generateMaxTokens: 16000, reasoningEffort: "none", maxOverlap: DEFAULT_MAX_OVERLAP },
     // 一作品 $0.02〜0.03 で収まっているので、一日6回でも月 $5 前後に留まる。
     production: { attemptsPerDay: 6, maxRepairs: 2 },
+    // 性格を引くだけだと、同じ作り手が出るのは一モデル75人の中の偶然に任される。
+    // 三作に一作ほどは顔なじみに書かせる。
+    persona: { reuse: 0.3 },
     publish: {
         target: "cloudflare",
         wranglerConfig: "wrangler.jsonc",
@@ -111,6 +121,7 @@ export function loadConfig(path = CONFIG_PATH): Config {
         budget: { ...DEFAULTS.budget, ...user.budget },
         generation: { ...DEFAULTS.generation, ...user.generation },
         production: { ...DEFAULTS.production, ...user.production },
+        persona: { ...DEFAULTS.persona, ...user.persona },
         publish: { ...DEFAULTS.publish, ...user.publish }
     };
 }

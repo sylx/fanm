@@ -15,6 +15,9 @@
     "attemptsPerDay": 6,
     "maxRepairs": 2
   },
+  "persona": {
+    "reuse": 0.3
+  },
   "publish": {
     "target": "cloudflare",
     "wranglerConfig": "wrangler.jsonc",
