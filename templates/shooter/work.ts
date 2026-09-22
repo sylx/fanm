@@ -9,7 +9,7 @@
 //   2. 見えていない44行は、平面の212〜255行目に来ることがある。gfx はふだん画面の
 //      高さ（212行）で止まるので、init で gfx.offscreen = true にしておく。
 //   3. 画面の上端の点数の帯は scroll.split でページ0に分け、止めておく。地上は
-//      ページ2。スプライトの Y は画面の行で渡せばよい（縦スクロールの分はエンジンが
+//      ページ1（G6 / G7 にはページが二枚しかないので、2 ではなく 1）。スプライトの Y は画面の行で渡せばよい（縦スクロールの分はエンジンが
 //      足す）。点数の帯には sprites: false を付ける。付けないと、地上のスプライトが
 //      点数の帯に幽霊のように映る（帯ごとに y が違うため）。付けておけば、上から
 //      入ってくる敵も点数の帯の下から滑り出てくる。
@@ -25,7 +25,7 @@ const FIELD_TOP = HUD_HEIGHT;       // ここから下が地上
 const SCREEN_BOTTOM = 212;
 /** 縦の平面の高さ。R23 は8ビットなので、画面の高さにかかわらず256で一周する。 */
 const PLANE_HEIGHT = 256;
-const PLANE_PAGE = 2;
+const PLANE_PAGE = 1;
 
 const PLAYER_SPEED = 2;
 const SHOT_SPEED = 6;
@@ -295,7 +295,7 @@ const create: WorkFactory = env => {
 
             // 平面の212〜255行目にも描き足すので、gfx が画面の下まで届くようにする。
             gfx.offscreen = true;
-            // 帯は二つ。上の点数の帯はページ0で止め、スプライトは出さない。地上はページ2。
+            // 帯は二つ。上の点数の帯はページ0で止め、スプライトは出さない。地上はページ1。
             scroll.split(0, { x: 0, y: 0, page: 0, sprites: false });
             field = scroll.split(FIELD_TOP, { page: PLANE_PAGE });
             stream(ctx);

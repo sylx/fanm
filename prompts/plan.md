@@ -50,7 +50,7 @@
   "motion": "動きの種類（例: 落下、回転、成長、追跡）",
   "composition": "画面の構図（例: 中央に一つ、画面全体の模様、横スクロール、上が絵で下が文章欄）",
   "structure": "段取り。何秒目に何が起き、画面がどう切り替わり、状態が何段階あるか。縛りをどう形にしたか。日本語で2〜4文",
-  "sound": "音の方針（例: FM のゆっくりした和音、PSG のアルペジオ、なし）",
+  "sound": "音の方針（例: FM のゆっくりした和音、PSG のアルペジオ）。無音にはしない",
   "msxFeatures": ["使う MSX2 の機能。blitter / sprites / palette / double-buffer / scroll / scroll-split / screen5 / screen7 / screen8 / psg / fm / rhythm / text などから"],
   "interactive": false,
   "durationFrames": 2400
