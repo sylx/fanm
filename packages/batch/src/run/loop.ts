@@ -241,7 +241,11 @@ export async function runLoop(options: LoopOptions): Promise<number> {
         const embeds = shown.map((id): Embed => {
             const meta = archive.meta(id);
             const thumb = { url: `${site}/works/${id}/thumb.png` };
-            const fields = [{ name: "長さ", value: `${Math.round(meta.durationFrames / 60)}秒`, inline: true }];
+            // 誰が書いたか。性格やモデル名を記録する前の作品には無いので、あるものだけ。
+            const fields: { name: string; value: string; inline: boolean }[] = [];
+            if (meta.penName) fields.push({ name: "作者", value: meta.penName, inline: true });
+            if (meta.model) fields.push({ name: "モデル", value: meta.model, inline: true });
+            fields.push({ name: "長さ", value: `${Math.round(meta.durationFrames / 60)}秒`, inline: true });
             if (meta.controls) fields.push({ name: "操作", value: meta.controls, inline: true });
             return {
                 title: meta.title,
