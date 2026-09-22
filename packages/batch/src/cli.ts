@@ -14,6 +14,9 @@
 //     fanm budget               今月の使用額
 //     fanm publish [--local]    採用作から公開物を組み立て（<VAR>/site/）、Cloudflare へ送る
 //                               --local は組み立てるところまで。偽のAIの作品も送らない
+//     fanm remove <id>... [--local]
+//                               作品を取り下げる。<VAR>/removed/ へ移し、組み立て直して送る。
+//                               戻すなら <VAR>/removed/<id> を <VAR>/works/ へ移し返して publish
 //
 // 制作は一度に一つだけ。すでに動いていれば、make はその様子を映すだけにし、
 // makenow は動いている常駐に「いま作れ」と頼んで、その様子を映す。
@@ -249,6 +252,39 @@ async function runSend(siteDir: string, local: boolean): Promise<number> {
     }
 }
 
+/** 公開物を組み立てて送る。publish と remove で使う。 */
+async function runPublish(local: boolean): Promise<number> {
+    const site = join(root, "site");
+    const result = await assemble(join(root, "works"), site);
+    console.log(`${site}: 作品 ${result.works} 件`);
+    if (result.engines.length) console.log(`  エンジンを追加: ${result.engines.join(", ")}`);
+    console.log(result.built.length ? `  作品をビルド: ${result.built.join(", ")}` : "  新しくビルドした作品はない");
+    if (result.withdrawn.length) console.log(`  取り下げた作品を消した: ${result.withdrawn.join(", ")}`);
+    if (result.removed.length) console.log(`  古い殻を掃除: ${result.removed.join(", ")}`);
+    return await runSend(site, local);
+}
+
+/**
+ * 作品を取り下げる。作品庫から <VAR>/removed/ へ移し、公開物を組み立て直して送る。
+ * 送れなかったときも作品庫からは外れたままなので、あとで publish すれば消える。
+ */
+async function runRemove(ids: readonly string[], local: boolean): Promise<number> {
+    const archive = new Archive(join(root, "works"));
+    const known = new Set(archive.ids());
+    const missing = ids.filter(id => !known.has(id));
+    if (missing.length) {
+        console.error(`作品庫にない: ${missing.join(", ")}（${archive.dir}）`);
+        return 1;
+    }
+    const log = new Log(logPath(root));
+    for (const id of ids) {
+        const { title } = archive.meta(id);
+        const to = archive.withdraw(id, join(root, "removed"));
+        log.line(`${id}「${title}」を取り下げた（${to} へ移した）`);
+    }
+    return await runPublish(local);
+}
+
 switch (command) {
     case "run":
         process.exitCode = await runLoop({
@@ -286,14 +322,13 @@ switch (command) {
     case "overlap":
         process.exitCode = runOverlap();
         break;
-    case "publish": {
-        const site = join(root, "site");
-        const result = await assemble(join(root, "works"), site);
-        console.log(`${site}: 作品 ${result.works} 件`);
-        if (result.engines.length) console.log(`  エンジンを追加: ${result.engines.join(", ")}`);
-        console.log(result.built.length ? `  作品をビルド: ${result.built.join(", ")}` : "  新しくビルドした作品はない");
-        if (result.removed.length) console.log(`  古い殻を掃除: ${result.removed.join(", ")}`);
-        process.exitCode = await runSend(site, args.includes("--local"));
+    case "publish":
+        process.exitCode = await runPublish(args.includes("--local"));
+        break;
+    case "remove": {
+        const ids = args.filter(a => !a.startsWith("--"));
+        if (!ids.length) throw new Error("usage: fanm remove <id>... [--local]");
+        process.exitCode = await runRemove(ids, args.includes("--local"));
         break;
     }
     case "budget": {
@@ -307,6 +342,6 @@ switch (command) {
         break;
     }
     default:
-        console.error("usage: fanm run [--once] | make [--fake] [--form <型>] | makenow [--local] [--provider <名前>] | check <dir> | overlap | status | publish [--local] | budget");
+        console.error("usage: fanm run [--once] | make [--fake] [--form <型>] | makenow [--local] [--provider <名前>] | check <dir> | overlap | status | publish [--local] | remove <id>... [--local] | budget");
         process.exitCode = 2;
 }

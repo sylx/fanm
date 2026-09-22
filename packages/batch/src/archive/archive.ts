@@ -5,10 +5,13 @@
 //
 // 公開用の work.js は publish の段階で public/work.ts からビルドする。
 //
+// 取り下げた作品は <VAR>/removed/<id>/ へ丸ごと移す。作品庫から外れるので、公開物にも
+// 過去作の見比べにも作り手の台帳にも出なくなる。消しはしないので、戻すなら移し返す。
+//
 // TODO: 不採用作の jobs/ を保存期間と容量の上限で消す。
 
 import { execFileSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { WorkDescription, WorkMeta } from "@fanm/work";
 import type { CheckReport } from "../check/check.js";
@@ -86,6 +89,19 @@ export class Archive {
         return readdirSync(this.dir)
             .filter(id => existsSync(join(this.dir, id, "public", "meta.json")))
             .sort();
+    }
+
+    /**
+     * 作品を作品庫から外し、trash/<id>/ へ移す。移した先を返す。
+     * 公開物から消えるのは、次に組み立てて送ったとき。
+     */
+    withdraw(id: string, trash: string): string {
+        if (!this.ids().includes(id)) throw new Error(`作品 ${id} は作品庫にない（${this.dir}）`);
+        const to = join(trash, id);
+        if (existsSync(to)) throw new Error(`${to} がすでにある。先に片づける`);
+        mkdirSync(trash, { recursive: true });
+        renameSync(join(this.dir, id), to);
+        return to;
     }
 
     /** 採用作の企画。無ければ undefined（型が入る前に作った作品）。 */

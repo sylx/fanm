@@ -58,6 +58,28 @@ docker exec -it <container> node_modules/.bin/tsx packages/batch/src/cli.ts make
 
 頼んで作った分も「最後に制作を始めた時刻」に記録するので、次の制作はそこから数え直す。急かした分だけ、あとの間隔が延びる。
 
+## 作品を取り下げる
+
+公開した作品を後から消すには `remove`。作品を作品庫から外し、公開物を組み立て直して送る。
+
+```bash
+scripts/fanm-shell.sh fanm remove 20260922-082137-k6vk          # 本番で。送るところまで
+scripts/fanm-shell.sh fanm remove <id> <id>                     # まとめて
+npm run remove -- <id> --local                                  # 手元で。送らずに var/site から消すだけ
+```
+
+id はギャラリーの作品ページの URL（`/work/<id>/`）か、`<VAR>/works/` の名前。**本番の作品は本番で消す。** 手元で消しても本番の作品庫には残り、次の公開でまた出る。
+
+| 段取り | すること |
+| --- | --- |
+| 外す | `<VAR>/works/<id>/` を `<VAR>/removed/<id>/` へ丸ごと移す。ログに「取り下げた」と残る |
+| 組み立てる | 作品庫に無い作品を `<VAR>/site/works/` から消す。直前の目録も捨てる（一覧を開いたままのタブのために一世代前を残しているが、そこに取り下げた作品の題と説明が載っているため） |
+| 送る | `publish` と同じ。送り終えると `/work/<id>/` は 404 になる |
+
+取り下げた作品は、過去作の見比べにも、企画の偏りを避ける材料にも、ペンネームの台帳にも使われなくなる。消しはしないので、戻すなら `<VAR>/removed/<id>/` を `<VAR>/works/` へ移し返して `fanm publish`。
+
+送れなかったとき（終了コード 2）も作品庫からは外れたまま。常駐は「送っていない作品」が無いと公開しないので、自分で `fanm publish` を送り直す。Discord に流れた知らせと、そのサムネイルは消えない。
+
 ## 知らせ
 
 知らせ先は環境変数 `FANM_NOTIFY_WEBHOOK`（Discord の webhook URL）。送り先は Discord と決めているので、embed で送る。飛ぶのは二種類だけで、どちらも設定していなければログに残る。
@@ -117,6 +139,7 @@ npm run makenow -- --fake      # 偽のAIで「いま作れ」を試す（偽の
 | ジョブ | `<VAR>/jobs/<id>/` |
 | 予算台帳 | `<VAR>/ledger/YYYY-MM.json` |
 | 作品庫 | `<VAR>/works/<id>/` |
+| 取り下げた作品 | `<VAR>/removed/<id>/` |
 | 公開物 | `<VAR>/site/` |
 | 常駐の覚え書き（最後の制作・公開、生きている目印、人を呼んだ用件） | `<VAR>/run.json` |
 | 二重起動を防ぐ鍵 | `<VAR>/run.lock` |

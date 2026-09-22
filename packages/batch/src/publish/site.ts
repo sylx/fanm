@@ -24,6 +24,8 @@ export interface AssembleResult {
     readonly engines: string[];
     /** 殻が持たなくなったので消したもの。 */
     readonly removed: string[];
+    /** 作品庫から外れたので公開物から消した作品のid。 */
+    readonly withdrawn: string[];
 }
 
 /** 作品庫の中身。public/meta.json があるものだけを作品とみなす。 */
@@ -44,6 +46,7 @@ function stale(source: string, output: string): boolean {
 export async function assemble(worksDir: string, siteDir: string): Promise<AssembleResult> {
     mkdirSync(siteDir, { recursive: true });
     const works = archived(worksDir);
+    const withdrawn = withdraw(siteDir, new Set(works.map(w => w.id)));
     const built: string[] = [];
     const engines: string[] = [];
 
@@ -71,7 +74,9 @@ export async function assemble(worksDir: string, siteDir: string): Promise<Assem
     const previousPath = join(siteDir, "works", "catalog-previous.json");
     const oldIndex = existsSync(indexPath) ? readFileSync(indexPath, "utf8") : null;
     // 直前の索引を開いたタブが、新しい公開後も一覧を読めるよう二世代を残す。
-    if (oldIndex && JSON.parse(oldIndex).revision !== index.revision) writeAtomic(previousPath, oldIndex);
+    // ただし作品を取り下げたときは残さない。古い塊に取り下げた作品の題と説明が載っている。
+    if (withdrawn.length) rmSync(previousPath, { force: true });
+    else if (oldIndex && JSON.parse(oldIndex).revision !== index.revision) writeAtomic(previousPath, oldIndex);
     for (const [path, content] of files) writeAtomic(join(siteDir, path.slice(1)), content);
     const keepChunks = new Set(index.items.map(item => item.chunk.split("/").at(-1)));
     if (existsSync(previousPath)) {
@@ -85,7 +90,25 @@ export async function assemble(worksDir: string, siteDir: string): Promise<Assem
 
     const removed = copyShell(siteDir);
     writeFileSync(join(siteDir, "_headers"), HEADERS);
-    return { works: catalog.length, built, engines, removed };
+    return { works: catalog.length, built, engines, removed, withdrawn };
+}
+
+/** 公開物の works/ のうち、作品のディレクトリでないもの。 */
+const NOT_WORKS = new Set(["catalog"]);
+
+/**
+ * 作品庫に無くなった作品を公開物から消す。消したidを返す。
+ * 作品のページ（/work/<id>/）は works/<id>/meta.json を読んで組み立てるので、
+ * ディレクトリごと消せば、送ったあとは見つからない（404）になる。
+ */
+function withdraw(siteDir: string, keep: ReadonlySet<string>): string[] {
+    const dir = join(siteDir, "works");
+    if (!existsSync(dir)) return [];
+    const gone = readdirSync(dir, { withFileTypes: true })
+        .filter(e => e.isDirectory() && !NOT_WORKS.has(e.name) && !keep.has(e.name))
+        .map(e => e.name);
+    for (const id of gone) rmSync(join(dir, id), { recursive: true });
+    return gone;
 }
 
 /**
