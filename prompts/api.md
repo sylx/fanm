@@ -1,4 +1,4 @@
-# fantasy-msx API（c7bf248）
+# fantasy-msx API（7e71e92）
 
 このファイルは `npm run prompts:api` で生成する。手で編集しない。
 
@@ -117,6 +117,84 @@ Coordinates are whole pixels. Anything else is rounded to the nearest one on
 the way in, so positions worked out with `sin` and `cos` can be passed straight
 through - a fraction reaching the packing would otherwise pick its shift from
 the fractional part and corrupt the pixel sharing the byte.
+
+### Scrolling
+
+A scroll on this machine moves nothing in VRAM. The picture stays where it
+was drawn and the VDP is told where to start reading it: R23 for the line, and
+- on the V9958, which is the VDP this console has - R26 and R27 for the
+column. A few register writes a frame, against a blitter that needs three
+frames to clear the screen once.
+
+```ts
+const { scroll } = ctx;                          // also bios.scroll, screen.scroll
+
+scroll.set(camera.x, camera.y);                  // the whole screen
+scroll.mask = true;                              // R25 MSK: hide the ragged left edge
+scroll.wide = true;                              // R25 SP2: two pages side by side
+```
+
+What the display looks into is a **plane**, and it is bigger than the screen.
+R23 wraps at 256 lines whatever the screen height, so there are 44 lines below
+a 212-line screen that only a scroll ever shows. Across, one page is the
+screen's own width; `wide` joins an even page to the odd one after it for a
+plane twice that - `scroll.planeWidth` says which. Both axes wrap, so a plane
+is a ring: move forever in one direction and it comes round again.
+
+**Bands** are the part the registers alone do not give you. They are read as
+each line is drawn, so changing them partway down gives the lines below
+different values from the lines above - which is how a status bar holds still
+over a playfield, and how hills move at half the speed of the road in front of
+them.
+
+```ts
+scroll.split(0, { page: 0 });                    // the top band: a status bar on page 0
+const field = scroll.split(24, { page: 2 });     // from line 24 down: the playfield
+
+update() {
+    field.x = camera.x;                          // bands are plain objects; move them
+    field.y = camera.y - 24;                     // y is the plane line at the top of the *screen*
+}
+```
+
+On the real machine this is a line interrupt and a handler that rewrites the
+registers between two lines, and that is exactly what happens here. R19 is
+armed for the last line of each band, the VDP raises its interrupt at the end
+of that line, and the handler - `machine.onInterrupt`, in the CPU's seat -
+acknowledges it by reading S#1 and writes the next band's registers before the
+raster reaches it. A band can be one line tall. Nothing is being faked: turn
+the interrupt off and the bands stop.
+
+`y` means what R23 means, the plane line shown at the top of the screen, not
+of the band. That keeps one number for one register, and it is also what
+makes a band able to point a single line anywhere in the plane - see DRIFT's
+lake, below.
+
+**Sprites move with R23.** Their Y is a line of the page rather than of the
+screen, so a vertical scroll carries every sprite along with the picture. On
+real hardware that is a bug waiting in every scrolling game, and here it is
+dealt with: `sprites.set` and `sprites.move` take screen lines, add the scroll
+of the band they land in back on, and write the lot again at each vertical
+sync. A sprite straddling two bands with different offsets is torn between
+them, as it is on the chip. The horizontal scroll never moves sprites, so x
+needs nothing.
+
+Two things the hardware insists on:
+
+- **The left edge.** R26 scrolls in whole groups of eight columns and R27
+  then shifts the picture back right by up to seven pixels, leaving that many
+  columns of backdrop at the left. `mask` blanks the leftmost eight all the
+  time, so the edge is still rather than ragged.
+- **Pages.** A band can show any page, and `wide` spends two on a plane. The
+  sprite tables sit in the lines below the screen at the foot of page 0, so a
+  plane that includes page 0 will scroll them into view. In SCREEN 5 there
+  are pages 2 and 3 to use instead; in SCREEN 7 and 8 there are only two
+  pages, and a plane that scrolls vertically has to live with them.
+
+The scroll writes nothing until it is first used, so a program setting R23 or
+R26 through `vdp` by hand keeps them. `screen.setScroll(lines)` is the same as
+`scroll.y`. At the chip level there are `vdp.setVerticalOffset`,
+`vdp.setHorizontalOffset` and `vdp.setScrollMode`.
 
 ### Text in a real typeface
 
@@ -313,7 +391,13 @@ npm run music -- out.wav        # eight bars, five voices
 
 ### Machine profile
 
-Fixed, and not configurable: **MSX2, V9938, NTSC 60Hz, 128KB VRAM**.
+Fixed, and not configurable: **MSX2, V9958, NTSC 60Hz, 128KB VRAM**.
+
+The VDP is the MSX2+'s V9958 rather than the MSX2's V9938: the same chip with
+R25-R27 added, which is where the horizontal scroll lives. Nothing else of the
+MSX2+ comes with it: no kanji ROM, and no YJK in the BIOS, although R25 will
+select it if written by hand. A program that never touches R25-R27 cannot tell
+the difference, except by the chip's ID in S#1.
 
 ## 型宣言
 
@@ -328,7 +412,7 @@ export type PaletteColor = readonly [number, number, number];
 
 ```ts
 import type { Bios } from "../bios/index.js";
-import type { Console, Graphics, Images, Ime, Screen, SoundDriver, Sprites, Typesetter } from "../bios/index.js";
+import type { Console, Graphics, Images, Ime, Screen, Scroll, SoundDriver, Sprites, Typesetter } from "../bios/index.js";
 import type { Frame } from "../core/machine.js";
 import type { Crt } from "../host/crt.js";
 import { Input } from "./input.js";
@@ -338,6 +422,11 @@ import { Pointer } from "./pointer.js";
 export interface Context {
     readonly bios: Bios;
     readonly screen: Screen;
+    /**
+     * Hardware scrolling: R23 down, the V9958's R26/R27 across, and bands that
+     * change them partway down the screen on the line interrupt.
+     */
+    readonly scroll: Scroll;
     readonly gfx: Graphics;
     readonly sprites: Sprites;
     /** Loading pictures from URLs, reduced to what the screen mode can show. */
@@ -439,6 +528,7 @@ export declare class Runtime implements Context {
     readonly keyboard: Keyboard;
     constructor(bios: Bios, host: Host);
     get screen(): Screen;
+    get scroll(): Scroll;
     get gfx(): Graphics;
     get sprites(): Sprites;
     get image(): Images;
@@ -614,6 +704,7 @@ export declare class Raster {
 ```ts
 import { type PaletteColor, type ScreenModeName, type Vdp } from "../api/index.js";
 import type { FantasyMachine } from "../core/machine.js";
+import { Scroll } from "./scroll.js";
 export interface SpriteTables {
     /** In sprite mode 2 this holds the per-line colours; attributes follow it. */
     readonly colors: number;
@@ -621,6 +712,8 @@ export interface SpriteTables {
     readonly patterns: number;
 }
 export declare class Screen {
+    /** Where the display looks into the plane, and the bands that split it. */
+    readonly scroll: Scroll;
     constructor(vdp: Vdp, machine: FantasyMachine);
     /**
      * Where the sprite tables live. They stay put in page 0 while the
@@ -660,7 +753,10 @@ export declare class Screen {
     flip(): void;
     /** Enables double buffering: draw on page 1 while page 0 is shown. */
     useDoubleBuffer(): void;
-    /** Scrolls the display vertically. The page wraps at 256 lines, not 212. */
+    /**
+     * Scrolls the display vertically. The page wraps at 256 lines, not 212.
+     * The same as `scroll.y`, which is where the rest of scrolling lives.
+     */
     setScroll(lines: number): void;
     setBackdrop(color: number): void;
     /**
@@ -675,6 +771,109 @@ export declare class Screen {
     resetPalette(): void;
     /** Advances the machine one frame, rendering everything set up so far. */
     frame(): void;
+}
+```
+
+### bios/scroll
+
+```ts
+import { type Vdp } from "../api/index.js";
+import type { Screen } from "./screen.js";
+/** Lines round the plane, whatever the screen height: R23 is eight bits. */
+export declare const PLANE_HEIGHT = 256;
+/** One horizontal strip of the screen, and where it looks into the plane. */
+export interface ScrollBand {
+    /** First screen line the band covers. It runs down to the next band. */
+    readonly top: number;
+    /** Plane column at the left edge. In the 512-wide modes it moves in steps of two. */
+    x: number;
+    /** Plane line at the top of the screen - not of the band. The same meaning R23 has. */
+    y: number;
+    /**
+     * Page the band shows. Left out, it follows `screen.displayPage`. With
+     * `wide` on, a page stands for the pair it belongs to: 0 and 1, 2 and 3.
+     */
+    page?: number;
+}
+export interface BandOptions {
+    x?: number;
+    y?: number;
+    page?: number;
+}
+export declare class Scroll {
+    /** Index of the band the next line interrupt brings in. */
+    /** R23 as last written, which the line interrupt is compared against. */
+    /**
+     * Nothing is written until the scroll is first used, so a program setting
+     * R23 or R26 by hand is not overwritten at every vertical sync.
+     */
+    constructor(vdp: Vdp, screen: Screen);
+    /** Plane column at the left edge of the top band. */
+    get x(): number;
+    set x(value: number);
+    /** Plane line at the top of the screen, in the top band. */
+    get y(): number;
+    set y(value: number);
+    /** Moves the top band. Without splits that is the whole screen. */
+    set(x: number, y: number): void;
+    /**
+     * R25's MSK: blanks the leftmost 8 pixels. A fine horizontal scroll shifts
+     * the picture right by up to seven pixels and shows the backdrop in the gap,
+     * so without this the left edge visibly flutters as the scroll moves.
+     */
+    get mask(): boolean;
+    set mask(on: boolean);
+    /**
+     * R25's SP2: the horizontal scroll runs across two pages, an even one on
+     * the left and the odd one after it on the right. The plane doubles to
+     * `2 * screen.width`, and the display has to be pointed at the odd page of
+     * the pair, which is done for you. A bitmap mode needs two pages for it, so
+     * SCREEN 7 and 8 give up double buffering.
+     */
+    get wide(): boolean;
+    set wide(on: boolean);
+    /** How far x goes before it wraps. */
+    get planeWidth(): number;
+    /** How far y goes before it wraps: 256, whatever the screen height. */
+    get planeHeight(): number;
+    /** Top first. There is always at least the one starting at line 0. */
+    get bands(): readonly ScrollBand[];
+    /**
+     * Starts a band at screen line `top`, running down to the next one, and
+     * hands it back to be moved from then on. A band already starting on that
+     * line is reused. Every split costs a line interrupt a frame, and nothing
+     * stops you putting one on every line.
+     *
+     *     const hud = scroll.split(0, { page: 1 });     // held still
+     *     const field = scroll.split(24);                // moved every frame
+     *     field.x = camera.x;
+     */
+    split(top: number, options?: BandOptions): ScrollBand;
+    /** Removes one band, or with no argument every band but the top one. */
+    unsplit(band?: ScrollBand): void;
+    /** The band covering a screen line. */
+    at(line: number): ScrollBand;
+    /** Where a screen pixel is in the plane, through whichever band covers it. */
+    toPlane(x: number, y: number): {
+        x: number;
+        y: number;
+    };
+    /**
+     * The first of `height` page lines that no band shows - somewhere a sprite
+     * can be parked without turning up in some other band. Looks from just
+     * below the bottom band onwards, and skips 208 and 216, which as a sprite's
+     * Y would end the sprite list.
+     */
+    unseenLine(height: number): number;
+    /** Whether the scroll has been used, and so owns R23, R26, R27 and R19. */
+    get active(): boolean;
+    /**
+     * Loads the top band and arms the interrupt for the next. The BIOS calls
+     * this at the vertical sync, before the frame's first line.
+     */
+    vsync(): void;
+    /** The line interrupt. The BIOS installs this as the machine's handler. */
+    interrupt(): void;
 }
 ```
 
@@ -704,6 +903,7 @@ export interface SpriteState {
     flags?: number;
 }
 export declare class Sprites {
+    /** Screen line of each shown sprite, before the scroll is added back. */
     constructor(vdp: Vdp, screen: Screen);
     /** Table addresses follow the screen mode, since page sizes differ. */
     /** 8x8 or 16x16, optionally with every pixel doubled. */
@@ -734,6 +934,17 @@ export declare class Sprites {
      * and the only way to tell the chip not to look at the rest at all.
      */
     setActiveCount(count: number): void;
+    /**
+     * Rewrites every sprite's Y against the scroll as it stands. The BIOS does
+     * this at each vertical sync, so a sprite stays on its screen line while
+     * the picture moves under it.
+     */
+    follow(): void;
+    /**
+     * Where hidden sprites go: page lines no band shows. Below the screen when
+     * nothing scrolls - but a band can point anywhere in the page, and a sprite
+     * parked where one is looking would turn up in it.
+     */
     /**
      * Whether any two sprites overlapped, clearing the flag as the hardware
      * does. Read it once per frame: reading also clears the VBlank flag.
