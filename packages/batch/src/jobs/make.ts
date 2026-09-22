@@ -72,8 +72,8 @@ function draw(ctx: MakeContext, job: Job): ProviderConfig {
 }
 
 /**
- * 作り手を決めてジョブに残す。persona.reuse の割合で、この相手の過去の作り手を
- * 呼び戻す。それ以外は性格を引き、名前を付ける。どちらもジョブの種から引くので、
+ * 作り手を決めてジョブに残す。persona.reuse（札に reuse があればそちら）の割合で、
+ * この相手の過去の作り手を呼び戻す。それ以外は性格を引き、名前を付ける。どちらもジョブの種から引くので、
  * 落ちて再開しても同じ作り手になる。相手を引き直したときは、その相手の作り手で
  * 決め直す（名前はモデルごとのため）。
  */
@@ -81,7 +81,8 @@ function cast(ctx: MakeContext, job: Job, entry: ProviderConfig): void {
     const known = ctx.archive.authors();
     const random = createRandom(job.seed ^ 0x2e05);
     const regulars = [...new Map(known.filter(a => a.model === entry.model).map(a => [a.penName, a])).values()];
-    const returning = regulars.length > 0 && random() < ctx.config.persona.reuse
+    const reuse = entry.reuse ?? ctx.config.persona.reuse;
+    const returning = regulars.length > 0 && random() < reuse
         ? regulars[Math.floor(random() * regulars.length)]
         : undefined;
     const traits = returning?.traits ?? drawTraits(createRandom(job.seed ^ 0x9e75));

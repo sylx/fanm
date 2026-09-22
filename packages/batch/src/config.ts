@@ -18,6 +18,11 @@ export interface ProviderConfig {
     readonly share?: number;
     /** この相手に頼むときの一作品の上限（USD）。省くと budget.perWorkUsd。単価が10倍違う相手を同じ枠では測れない。 */
     readonly perWorkUsd?: number;
+    /**
+     * この相手のときに過去の作り手を呼び戻す割合。省くと persona.reuse。
+     * 引かれることの少ない相手は、作り手も顔なじみになりにくいので高めにする。
+     */
+    readonly reuse?: number;
     /** APIキーの環境変数。省くと事業者ごとの既定（providers/ の各 API_KEY_ENV）。 */
     readonly apiKeyEnv?: string;
     /** 接続先。省くと事業者ごとの既定。 */
