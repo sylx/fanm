@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { createRoot } from "react-dom/client";
 import { createPortal } from "react-dom";
 import { PAGE_SIZE, workURL, type CatalogEntry, type CatalogIndex } from "./catalog-entry.js";
+import { DEFAULT_LEVEL, MUTED_KEY, VOLUME_KEY, gainFor, parseLevel } from "./volume.js";
 import { ORIGIN, SITE_DESCRIPTION, SITE_TITLE } from "../worker/render.js";
 
 const PLAY_KEYS = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "KeyZ", "KeyX", "KeyW", "KeyA", "KeyS", "KeyD", "KeyN", "KeyM"]);
@@ -18,6 +19,15 @@ async function json<T>(path: string, signal?: AbortSignal): Promise<T> {
     if (!response.ok) throw new Error(response.status === 404 ? "作品または一覧が見つかりません。" : "読み込めませんでした。時間をおいて再度お試しください。");
     return response.json() as Promise<T>;
 }
+
+/** 音量は作品をまたいで覚えておく。読めない窓（保存を禁じた設定など）では毎回最大から。 */
+function saved(key: string): string | null {
+    try { return localStorage.getItem(key); } catch { return null; }
+}
+function save(key: string, value: string): void {
+    try { localStorage.setItem(key, value); } catch { /* 覚えられないだけで、音量は効く。 */ }
+}
+const savedLevel = () => parseLevel(saved(VOLUME_KEY));
 
 let sound: AudioContext | undefined;
 function unlock(): void {
@@ -77,6 +87,8 @@ function App() {
     const [loading, setLoading] = useState(true);
     const [shuffle, setShuffle] = useState(false);
     const [retry, setRetry] = useState(0);
+    const [level, setLevel] = useState(savedLevel);
+    const [muted, setMuted] = useState(() => saved(MUTED_KEY) === "1");
     const frame = useRef<HTMLIFrameElement>(null);
     const stage = useRef<HTMLElement>(null);
     const gallery = useRef<HTMLElement>(null);
@@ -246,6 +258,15 @@ function App() {
         };
     }, [work?.id]);
 
+    // 作品の中で鳴らし方を変えるのはプレイヤー。ここは覚えて知らせるだけ。
+    // 読み込みの終わった iframe には onLoad からも同じ知らせを送る。
+    const sendVolume = () => frame.current?.contentWindow?.postMessage({ fanm: "volume", level, muted }, location.origin);
+    useEffect(() => {
+        save(VOLUME_KEY, String(level));
+        save(MUTED_KEY, muted ? "1" : "0");
+        sendVolume();
+    }, [level, muted]);
+
     function randomNext(auto: boolean) {
         if (!index?.items.length) return;
         const pool = index.items.filter(item => item.id !== route.id);
@@ -266,6 +287,13 @@ function App() {
                 if (shuffle) setShuffle(false);
                 else { randomNext(false); setShuffle(true); }
             }}>{shuffle ? "ランダム再生中" : "ランダム再生"}</button>
+            <div className="volume">
+                <button id="mute" aria-pressed={muted} title={muted ? "音を出す" : "音を消す"} onClick={() => { unlock(); setMuted(value => !value); }}>{muted ? "消音中" : "消音"}</button>
+                {/* つまみを動かしたら、消音は解く。消したまま大きさだけ変わっても分からない。 */}
+                {/* 目盛りは元の大きさ（1 倍）の位置。ここより右は元より大きい。 */}
+                <input type="range" aria-label="音量" list="volume-marks" min={0} max={100} step={1} value={Math.round(level * 100)} aria-valuetext={muted ? "消音中" : `元の${gainFor(level).toFixed(1)}倍`} onChange={event => { setLevel(Number(event.target.value) / 100); setMuted(false); }} />
+                <datalist id="volume-marks"><option value={Math.round(DEFAULT_LEVEL * 100)} /></datalist>
+            </div>
         </div>
         {route.id && <section id="stage" ref={stage} aria-label="作品の再生">
             <div className="player-actions">
@@ -278,6 +306,7 @@ function App() {
                 <iframe key={work.id} ref={frame} title={work.title} allow="autoplay" src={`/play.html?work=${encodeURIComponent(work.id)}`} onLoad={() => {
                     if (focusPlayer.current) frame.current?.contentWindow?.focus();
                     frame.current?.contentWindow?.postMessage({ fanm: "audio" }, location.origin);
+                    sendVolume();
                 }} />
             </> : <p role="status">作品を読み込んでいます…</p>}
         </section>}

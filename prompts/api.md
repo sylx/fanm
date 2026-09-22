@@ -1,4 +1,4 @@
-# fantasy-msx API（bcf7219）
+# fantasy-msx API（5dcd700）
 
 このファイルは `npm run prompts:api` で生成する。手で編集しない。
 
@@ -536,6 +536,12 @@ export interface Host {
      */
     readonly crt?: Crt | null;
     /**
+     * The listener's volume, 1 for as it is, and whether the sound is silenced. A host
+     * with no sound has neither, and `runtime.volume` is then just 1.
+     */
+    volume?: number;
+    muted?: boolean;
+    /**
      * Called once, with the runtime, so the host can reach the things it needs
      * - input to wire events to, and the machine to pull audio from.
      */
@@ -567,6 +573,17 @@ export declare class Runtime implements Context {
     get ime(): Ime;
     get bgm(): SoundDriver;
     get crt(): Crt | null;
+    /**
+     * The listener's volume, 1 for as it is and above that louder - for a page's own volume control, not
+     * the program's. A program that wants to be quieter writes
+     * `AudioMixer.volume` or its chips' registers; this one belongs to the
+     * person listening and sits on top of both.
+     */
+    get volume(): number;
+    set volume(value: number);
+    /** Silences the sound without forgetting the volume. */
+    get muted(): boolean;
+    set muted(value: boolean);
     get frame(): number;
     get time(): number;
     /** Runs `app` until `stop()`. */

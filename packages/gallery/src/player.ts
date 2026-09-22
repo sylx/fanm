@@ -11,6 +11,7 @@
 
 import { createEnv, type WorkFactory } from "@fanm/work";
 import type { CatalogEntry } from "./catalog-entry.js";
+import { MUTED_KEY, VOLUME_KEY, gainFor, parseLevel } from "./volume.js";
 
 type Engine = typeof import("fantasy-msx");
 type Runtime = ReturnType<Engine["boot"]>;
@@ -29,6 +30,37 @@ interface Loaded {
 const FRAME = { width: 272, height: 228 } as const;
 
 const CRT_KEY = "fanM.crt";
+function readLevel(): number {
+    return parseLevel(localStorage.getItem(VOLUME_KEY));
+}
+
+/**
+ * 音量を持たない古いエンジンのための回り道。公開済みの作品は作られた版の
+ * エンジンで動くので、音量の口が付く前の版もずっと残る。そのエンジンが
+ * 音をスピーカーへつなぐ所に割り込み、間に音量のつまみを一つ挟む。
+ * 音量を持つエンジンでは入れない。
+ */
+function volumeShim(): (gain: number) => void {
+    const connect = AudioNode.prototype.connect as (this: AudioNode, ...args: unknown[]) => unknown;
+    const knobs = new Map<BaseAudioContext, GainNode>();
+    let current = 1;
+    AudioNode.prototype.connect = function (this: AudioNode, destination: unknown, ...rest: unknown[]) {
+        if (!(destination instanceof AudioDestinationNode)) return connect.call(this, destination, ...rest);
+        const context = destination.context;
+        let knob = knobs.get(context);
+        if (!knob) {
+            knob = new GainNode(context, { gain: current });
+            connect.call(knob, destination);
+            knobs.set(context, knob);
+            context.addEventListener("statechange", () => { if (context.state === "closed") knobs.delete(context); });
+        }
+        return connect.call(this, knob, ...rest);
+    } as typeof AudioNode.prototype.connect;
+    return gain => {
+        current = gain;
+        for (const [context, knob] of knobs) knob.gain.setTargetAtTime(gain, context.currentTime, 0.02);
+    };
+}
 
 /**
  * 作品が日本語を出すためのドット面。作品自身は外から何も読めないので、
@@ -116,6 +148,17 @@ let canvas = document.querySelector("canvas") as HTMLCanvasElement;
 // ?crt=1 / ?crt=0 が最優先。指定がなければ前回の選択を覚えている。
 let crt = params.has("crt") ? params.get("crt") !== "0" : localStorage.getItem(CRT_KEY) === "on";
 let runtime: Runtime | null = null;
+let level = readLevel();
+let muted = localStorage.getItem(MUTED_KEY) === "1";
+const shim = "volume" in found.engine.Runtime.prototype ? null : volumeShim();
+
+/** いまの音量を、動いているエンジンへ渡す。 */
+function applyVolume(): void {
+    if (shim) return shim(muted ? 0 : gainFor(level));
+    if (!runtime) return;
+    runtime.volume = gainFor(level);
+    runtime.muted = muted;
+}
 
 /**
  * 作品を頭から動かす。canvas は最初に与えられた種類の context を一生持つので、
@@ -125,7 +168,8 @@ let runtime: Runtime | null = null;
 function launch(): void {
     runtime?.stop();
     fit(canvas);
-    runtime = found!.engine.run(found!.factory(createEnv(seed)), { canvas, crt });
+    runtime = found!.engine.run(found!.factory(createEnv(seed)), { canvas, crt, volume: gainFor(level), muted });
+    applyVolume();
     // WebGL2 が無い環境では host が平面描画に落とすので、押しても効かない。
     button.setAttribute("aria-pressed", String(crt && !!runtime.crt));
 }
@@ -141,11 +185,19 @@ function launch(): void {
  * ときに鳴らし始める。この窓は iframe の中なので、触られるのは目録のカードで
  * あって、ここではない。触られたことにして、エンジン自身の手で起こさせる。
  * 入力にはならない（作品の指先は canvas の上の出来事だけを見ている）。
+ *
+ * volume は目録の音量のつまみ。つまみの位置（0〜1）と消音かどうかが来る。
+ * 覚えておくのは目録の側なので、ここでは鳴らし方を変えるだけ。
  */
 window.addEventListener("message", event => {
     if (event.origin !== location.origin) return;
-    const data = event.data as { fanm?: unknown; code?: unknown; down?: unknown };
+    const data = event.data as { fanm?: unknown; code?: unknown; down?: unknown; level?: unknown; muted?: unknown };
     if (data?.fanm === "audio") return void window.dispatchEvent(new Event("pointerdown"));
+    if (data?.fanm === "volume") {
+        if (typeof data.level === "number" && Number.isFinite(data.level)) level = Math.min(1, Math.max(0, data.level));
+        muted = data.muted === true;
+        return applyVolume();
+    }
     if (data?.fanm !== "key" || typeof data.code !== "string") return;
     runtime?.input.setKey(data.code, data.down === true);
 });

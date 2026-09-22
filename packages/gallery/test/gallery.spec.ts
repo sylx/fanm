@@ -110,3 +110,42 @@ test("スマホでも作品と一覧が横にはみ出さない", async ({ page 
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
     await page.screenshot({ path: "var/gallery-test-results/mobile.png", fullPage: false });
 });
+
+test("音量のつまみと消音が作品の音に届き、次に開いても覚えている", async ({ page }) => {
+    const index = await (await page.request.get("/works/catalog.json")).json() as CatalogIndex;
+    test.skip(!index.items.length, "var/works にプレビュー用作品が必要です");
+    // 作品の中で音量の増幅器に最後に渡った値を、窓ごとに書き留める。
+    await page.addInitScript(() => {
+        const w = window as unknown as { gains: GainNode[] };
+        w.gains = [];
+        const create = BaseAudioContext.prototype.createGain;
+        BaseAudioContext.prototype.createGain = function () { const node = create.call(this); w.gains.push(node); return node; };
+        const target = AudioParam.prototype.setTargetAtTime;
+        AudioParam.prototype.setTargetAtTime = function (value, start, constant) {
+            (this as unknown as { last: number }).last = value;
+            return target.call(this, value, start, constant);
+        };
+    });
+    const gain = () => page.frames().find(frame => frame.url().includes("play.html"))?.evaluate(() => {
+        const node = (window as unknown as { gains: GainNode[] }).gains.at(-1);
+        return node ? (node.gain as unknown as { last?: number }).last ?? node.gain.value : null;
+    }) ?? null;
+    await page.goto(`/work/${index.items[0].id}/`);
+    await expect(page.frameLocator("#stage iframe").locator("canvas")).toBeVisible();
+    // 初めは元の大きさ。つまみの右端は元の 3 倍。
+    await expect.poll(gain).toBeCloseTo(1);
+    const slider = page.getByRole("slider", { name: "音量" });
+    await slider.fill("50");
+    await expect.poll(gain).toBeCloseTo(0.75);
+    await page.getByRole("button", { name: "消音" }).click();
+    await expect(page.locator("#mute")).toHaveAttribute("aria-pressed", "true");
+    await expect.poll(gain).toBe(0);
+    await page.reload();
+    await expect(page.locator("#mute")).toHaveAttribute("aria-pressed", "true");
+    await expect(slider).toHaveValue("50");
+    await expect.poll(gain).toBe(0);
+    // つまみを動かすと消音は解ける。
+    await slider.fill("100");
+    await expect(page.locator("#mute")).toHaveAttribute("aria-pressed", "false");
+    await expect.poll(gain).toBe(3);
+});

@@ -75,6 +75,15 @@ ul { list-style: none; display: grid; gap: 16px; padding: 0; margin: 0;
           border: 1px solid var(--line); border-radius: 4px; font: inherit; }
 #random:hover, #random:focus-visible { color: var(--fg); border-color: var(--fg); }
 #random[aria-pressed="true"] { color: var(--fg); border-color: var(--fg); }
+/* 音量。消音の切り替えはランダム再生と同じ形にそろえ、つまみを右に並べる。
+   消音中はつまみを薄くして、今は効いていないことを見せる。 */
+.volume { display: flex; align-items: center; gap: 8px; }
+#mute { padding: 2px 8px; cursor: pointer; background: none; color: var(--dim);
+        border: 1px solid var(--line); border-radius: 4px; font: inherit; white-space: nowrap; }
+#mute:hover, #mute:focus-visible { color: var(--fg); border-color: var(--fg); }
+#mute[aria-pressed="true"] { color: var(--fg); border-color: var(--fg); }
+.volume input[type="range"] { width: 120px; accent-color: var(--fg); cursor: pointer; }
+#mute[aria-pressed="true"] + input[type="range"] { opacity: .4; }
 
 footer {
   margin-top: 48px;
