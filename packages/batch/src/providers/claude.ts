@@ -20,8 +20,12 @@ import { ProviderError } from "./provider.js";
 /** APIキーを入れる環境変数。公式SDKが既定で読む名前に合わせる。 */
 export const CLAUDE_API_KEY_ENV = "ANTHROPIC_API_KEY";
 
-/** 1M トークンあたりの USD。2026-09 時点。 */
-const PRICES: Record<string, { input: number; output: number }> = {
+/**
+ * 1M トークンあたりの USD。2026-09 時点。`cacheRead` はキャッシュ読み出しが
+ * 入力の何倍か（省くと CACHE.read）。
+ */
+const PRICES: Record<string, { input: number; output: number; cacheRead?: number }> = {
+    "claude-opus-5-5": { input: 4, output: 20, cacheRead: 0.05 },
     "claude-opus-5": { input: 5, output: 25 },
     "claude-opus-4-8": { input: 5, output: 25 },
     "claude-sonnet-5": { input: 2, output: 10 }
@@ -30,7 +34,7 @@ const PRICES: Record<string, { input: number; output: number }> = {
 /** 単価の分かっているモデル。鍵が無くても確かめられる。 */
 export const CLAUDE_MODELS = Object.keys(PRICES);
 
-/** キャッシュの単価は入力の何倍か。読み出しは安く、書き込みは少し高い（5分もつ）。 */
+/** キャッシュの単価は入力の何倍か。読み出しは安く、書き込みは少し高い（5分もつ）。読み出しはモデルで違うことがある。 */
 const CACHE = { read: 0.1, write: 1.25 } as const;
 
 /** バッチの思考の深さを、Claude の effort に読み替える。 */
@@ -97,7 +101,7 @@ function asProviderError(e: unknown): ProviderError {
 
 export class Claude implements Provider {
     readonly name = "claude";
-    private readonly price: { input: number; output: number };
+    private readonly price: { input: number; output: number; cacheRead?: number };
     private readonly client: Anthropic;
 
     constructor(
@@ -181,7 +185,7 @@ export class Claude implements Provider {
         const usd = (
             raw.input_tokens * this.price.input
             + written * this.price.input * CACHE.write
-            + read * this.price.input * CACHE.read
+            + read * this.price.input * (this.price.cacheRead ?? CACHE.read)
             + raw.output_tokens * this.price.output
         ) / 1e6;
         return {

@@ -39,7 +39,7 @@ fanm run（常駐）
 npm run makenow                 # 手元で。つくって Cloudflare まで
 npm run makenow -- --local      # 送らずに var/site へ組み立てるだけ
 npm run makenow -- --provider claude          # 今回は Claude に頼む
-npm run makenow -- --provider claude-opus-5   # モデル名でも指せる
+npm run makenow -- --provider claude-opus-5-5 # モデル名でも指せる
 docker exec -it <container> node_modules/.bin/tsx packages/batch/src/cli.ts makenow
 ```
 
@@ -152,7 +152,7 @@ npm run makenow -- --fake      # 偽のAIで「いま作れ」を試す（偽の
 **常駐は設定を読み直す。** 30秒ごとに目を覚ますたびにファイルを見て、中身が変わっていれば読み直す。制作に入るのはそのあとなので、作りはじめるときの設定は必ず新しい。書き替えたら入れ替えも再起動も要らない。
 
 ```
-[…] 設定を読み直した（budget、providers）。札束は deepseek-v4-pro / claude-opus-5×0
+[…] 設定を読み直した（budget、providers）。札束は deepseek-v4-pro / claude-opus-5-5×0
 ```
 
 - 書きかけを掴んでも止まらない。読めない JSON は捨てて、前の設定のまま続ける（`設定を読めない。前のまま続ける`）。直せば次の30秒で入る。同じ中身は二度読まないので、壊れたまま置いても言い続けない。
@@ -168,13 +168,13 @@ APIキーを入れる環境変数は事業者ごとに決まっていて、設�
 | 事業者 | `name` | `model` の例 | APIキーの環境変数 |
 | --- | --- | --- | --- |
 | DeepSeek | `deepseek` | `deepseek-v4-pro`、`deepseek-flash` | `DEEPSEEK_API_KEY` |
-| Claude | `claude` | `claude-opus-5`、`claude-opus-4-8`、`claude-sonnet-5` | `ANTHROPIC_API_KEY` |
+| Claude | `claude` | `claude-opus-5-5`、`claude-opus-5`、`claude-opus-4-8`、`claude-sonnet-5` | `ANTHROPIC_API_KEY` |
 | OpenAI | `openai` | `gpt-6-astra`、`gpt-5.6-sol`、`gpt-5.6-terra`、`gpt-5.6-luna`、`gpt-5.5` | `OPENAI_API_KEY` |
 
 一人だけに頼むなら、札を一枚だけ書く。
 
 ```json
-{ "providers": [{ "name": "claude", "model": "claude-opus-5" }] }
+{ "providers": [{ "name": "claude", "model": "claude-opus-5-5" }] }
 ```
 
 混ぜるなら、札を並べて `share`（引かれやすさ）を書く。下は「六作に一作を Claude に頼む」。
@@ -183,7 +183,7 @@ APIキーを入れる環境変数は事業者ごとに決まっていて、設�
 {
   "providers": [
     { "name": "deepseek", "model": "deepseek-v4-pro", "share": 5 },
-    { "name": "claude", "model": "claude-opus-5", "share": 1, "perWorkUsd": 2.5 }
+    { "name": "claude", "model": "claude-opus-5-5", "share": 1, "perWorkUsd": 2.5 }
   ]
 }
 ```
@@ -200,11 +200,12 @@ APIキーを入れる環境変数は事業者ごとに決まっていて、設�
 | --- | --- |
 | `deepseek-v4-pro` | $0.12 |
 | `claude-sonnet-5` | $0.25 |
+| `claude-opus-5-5` | $0.50 |
 | `claude-opus-5` | $0.63 |
 
-`claude-opus-5` を札束に入れるなら、その札に `perWorkUsd` を $2.5 ほど付ける（企画1回・生成1回・修正2回まで見た額）。全体の `budget.perWorkUsd` を上げてしまうと、安い相手の暴走まで許すことになる。月額（`budget.monthlyUsd`）は使い切らないように制作の間隔が自動で延びる（実測の一作品あたりの費用から決まる）ので、高い相手を混ぜると作る本数が減る。
+`claude-opus-5-5` を札束に入れるなら、その札に `perWorkUsd` を $2.5 ほど付ける（企画1回・生成1回・修正2回まで見た額）。全体の `budget.perWorkUsd` を上げてしまうと、安い相手の暴走まで許すことになる。月額（`budget.monthlyUsd`）は使い切らないように制作の間隔が自動で延びる（実測の一作品あたりの費用から決まる）ので、高い相手を混ぜると作る本数が減る。
 
-実費は予約額より下がる。予約は入力を高めに見積もっていて、Claude では制作ルールとAPI資料（6万字、どの呼出しでも同じ）に入力キャッシュの印を付けているので、二回目からの読み出しは十分の一で数えられる。
+実費は予約額より下がる。予約は入力を高めに見積もっていて、Claude では制作ルールとAPI資料（6万字、どの呼出しでも同じ）に入力キャッシュの印を付けているので、二回目からの読み出しは十分の一（`claude-opus-5-5` は二十分の一）で数えられる。
 
 ### 作り手の性格とペンネーム
 
@@ -230,7 +231,7 @@ APIキーを入れる環境変数は事業者ごとに決まっていて、設�
 {
   "providers": [
     { "name": "deepseek", "model": "deepseek-v4-pro", "share": 6 },
-    { "name": "claude", "model": "claude-opus-5", "share": 1, "perWorkUsd": 2.5, "reuse": 0.8 }
+    { "name": "claude", "model": "claude-opus-5-5", "share": 1, "perWorkUsd": 2.5, "reuse": 0.8 }
   ],
   "persona": { "reuse": 0.3 }
 }

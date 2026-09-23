@@ -54,7 +54,7 @@ export function drawProvider(
 
 /**
  * 指定された相手だけの札束。事業者の名前（`claude`）でも、モデル名
- * （`claude-opus-5`）でもよい。名前で指すと、その事業者の札が複数あれば
+ * （`claude-opus-5-5`）でもよい。名前で指すと、その事業者の札が複数あれば
  * その中から引く。合う札がなければ undefined。
  */
 export function deckNamed(deck: readonly ProviderConfig[], wanted: string): readonly ProviderConfig[] | undefined {
