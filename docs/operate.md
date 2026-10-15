@@ -170,6 +170,7 @@ APIキーを入れる環境変数は事業者ごとに決まっていて、設�
 | DeepSeek | `deepseek` | `deepseek-v4-pro`、`deepseek-flash` | `DEEPSEEK_API_KEY` |
 | Claude | `claude` | `claude-opus-5-5`、`claude-opus-5`、`claude-opus-4-8`、`claude-sonnet-5` | `ANTHROPIC_API_KEY` |
 | OpenAI | `openai` | `gpt-6-astra`、`gpt-5.6-sol`、`gpt-5.6-terra`、`gpt-5.6-luna`、`gpt-5.5` | `OPENAI_API_KEY` |
+| Gemini | `gemini` | `gemini-4-argon`、`gemini-3.8-flash`、`gemini-3.6-flash`、`gemini-3.5-flash-lite`、`gemini-3.1-pro-preview` | `GEMINI_API_KEY` |
 
 一人だけに頼むなら、札を一枚だけ書く。
 
@@ -217,7 +218,7 @@ APIキーを入れる環境変数は事業者ごとに決まっていて、設�
 | こだわり（`focus`） | `graphics` / `music` / `gameplay` |
 | 感性に従う↔理性的（`intuition`） | 0〜1 を 0.25 刻み |
 
-同じモデルで同じ性格の作り手は、同じ**ペンネーム**を名乗る（`persona/pen-name.ts`）。DeepSeek は日本語（豪快太郎）、Claude は英語（GoldenSnail）、OpenAI は外来語と日本の名前（シャープ一郎）。頭の語は緻密なら細い語、大雑把なら太い語から選ぶ。作品の `meta.json` には `model` と並んで `penName` と `traits` が入る。
+同じモデルで同じ性格の作り手は、同じ**ペンネーム**を名乗る（`persona/pen-name.ts`）。DeepSeek は日本語（豪快太郎）、Claude は英語（GoldenSnail）、OpenAI は外来語と日本の名前（シャープ一郎）、Gemini は重ね言葉と日本の名前（きらきら丸）。頭の語は緻密なら細い語、大雑把なら太い語から選ぶ。作品の `meta.json` には `model` と並んで `penName` と `traits` が入る。
 
 **過去の作り手を呼び戻す。** 性格を引くだけでは、同じ作り手が出るかは一モデル75人の中の偶然に任される。そこで `fanm.json` の `persona.reuse`（既定 `0.3`）の割合で、引いた相手に採用作のある作り手がいれば、その中から一人を選んで書かせる（ログに「再登場」と出る）。`0` にすると毎回新しく引き、`1` にすると作り手のいるモデルでは必ず顔なじみになる。
 
@@ -275,7 +276,7 @@ fanM も fantasy-msx も公開リポジトリなので、Coolify の **Public Re
 
     | 名前 | 中身 |
     | --- | --- |
-    | `DEEPSEEK_API_KEY` | AIのAPIキー。無いと起動しない（Claude なら `ANTHROPIC_API_KEY`、OpenAI なら `OPENAI_API_KEY`。札束にいる相手のぶんだけ要る） |
+    | `DEEPSEEK_API_KEY` | AIのAPIキー。無いと起動しない（Claude なら `ANTHROPIC_API_KEY`、OpenAI なら `OPENAI_API_KEY`、Gemini なら `GEMINI_API_KEY`。札束にいる相手のぶんだけ要る） |
     | `CLOUDFLARE_API_TOKEN` | 公開用（[docs/deploy.md](deploy.md)） |
     | `CLOUDFLARE_ACCOUNT_ID` | 同上 |
     | `FANM_NOTIFY_WEBHOOK` | 知らせ先。無くてもよい |

@@ -2,6 +2,7 @@
 //
 //     deepseek  日本語 + 日本の名前        豪快太郎
 //     openai    外来語 + 日本の名前        シャープ一郎
+//     gemini    重ね言葉 + 日本の名前      きらきら丸（双子座なので、同じ音を二つ重ねる）
 //     claude    英語 + 英語（つなげて書く）  GoldenSnail
 //
 // 名前は性格の鍵（persona.ts の personaKey）の散らし（hash）で単語を選ぶ。同じ鍵
@@ -54,6 +55,20 @@ const LOANWORD: Words = {
     tails: JAPANESE_TAILS
 };
 
+const REDUPLICATED: Words = {
+    fine: [
+        "きらきら", "さらさら", "そよそよ", "ちまちま", "こつこつ", "しとしと", "すやすや", "ふわふわ",
+        "ひらひら", "ほろほろ", "ゆらゆら", "つやつや", "ちくちく", "ぽつぽつ", "くるくる", "ちらちら",
+        "こそこそ", "しずしず", "とことこ", "ほのぼの", "うとうと", "ころころ", "ぴかぴか", "さくさく"
+    ],
+    bold: [
+        "どかどか", "ばりばり", "がんがん", "ぐいぐい", "どんどん", "ずんずん", "ごろごろ", "がつがつ",
+        "ばんばん", "めらめら", "ぶんぶん", "ざぶざぶ", "もりもり", "ぐんぐん", "どすどす", "がやがや",
+        "わくわく", "ずかずか", "ばしばし", "ごうごう", "ぼうぼう", "ぎらぎら", "わいわい", "どろどろ"
+    ],
+    tails: JAPANESE_TAILS
+};
+
 const ENGLISH: Words = {
     fine: [
         "Golden", "Silver", "Crystal", "Velvet", "Ivory", "Amber", "Quiet", "Tiny", "Gentle", "Careful",
@@ -75,6 +90,7 @@ const ENGLISH: Words = {
 const WORDS: Record<ProviderConfig["name"], Words> = {
     deepseek: JAPANESE,
     openai: LOANWORD,
+    gemini: REDUPLICATED,
     claude: ENGLISH,
     fake: ENGLISH
 };

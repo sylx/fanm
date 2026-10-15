@@ -15,6 +15,7 @@ import type { ProviderConfig } from "../config.js";
 import { Claude, CLAUDE_API_KEY_ENV, CLAUDE_MODELS } from "./claude.js";
 import { DeepSeek, DEEPSEEK_API_KEY_ENV, DEEPSEEK_MODELS } from "./deepseek.js";
 import { FakeProvider } from "./fake.js";
+import { Gemini, GEMINI_API_KEY_ENV, GEMINI_MODELS } from "./gemini.js";
 import { OPENAI_API_KEY_ENV, OPENAI_MODELS, OpenAIProvider } from "./openai.js";
 import type { Provider } from "./provider.js";
 
@@ -66,7 +67,8 @@ export function deckNamed(deck: readonly ProviderConfig[], wanted: string): read
 const VENDORS = {
     deepseek: { env: DEEPSEEK_API_KEY_ENV, models: DEEPSEEK_MODELS },
     claude: { env: CLAUDE_API_KEY_ENV, models: CLAUDE_MODELS },
-    openai: { env: OPENAI_API_KEY_ENV, models: OPENAI_MODELS }
+    openai: { env: OPENAI_API_KEY_ENV, models: OPENAI_MODELS },
+    gemini: { env: GEMINI_API_KEY_ENV, models: GEMINI_MODELS }
 } as const;
 
 /**
@@ -88,6 +90,7 @@ export function createProvider(entry: ProviderConfig): Provider {
     switch (entry.name) {
         case "claude": return new Claude(entry.model, key, entry.baseUrl);
         case "openai": return new OpenAIProvider(entry.model, key, entry.baseUrl);
+        case "gemini": return new Gemini(entry.model, key, entry.baseUrl);
         case "deepseek": return new DeepSeek(entry.model, key, entry.baseUrl);
     }
 }
