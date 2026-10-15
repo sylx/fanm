@@ -28,6 +28,7 @@ const PRICES: Record<string, { input: number; output: number; cacheRead?: number
     "claude-opus-5-5": { input: 4, output: 20, cacheRead: 0.05 },
     "claude-opus-5": { input: 5, output: 25 },
     "claude-opus-4-8": { input: 5, output: 25 },
+    "claude-sonnet-5-5": { input: 2, output: 10 },
     "claude-sonnet-5": { input: 2, output: 10 }
 };
 

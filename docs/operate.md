@@ -168,7 +168,7 @@ APIキーを入れる環境変数は事業者ごとに決まっていて、設�
 | 事業者 | `name` | `model` の例 | APIキーの環境変数 |
 | --- | --- | --- | --- |
 | DeepSeek | `deepseek` | `deepseek-v4-pro`、`deepseek-flash` | `DEEPSEEK_API_KEY` |
-| Claude | `claude` | `claude-opus-5-5`、`claude-opus-5`、`claude-opus-4-8`、`claude-sonnet-5` | `ANTHROPIC_API_KEY` |
+| Claude | `claude` | `claude-opus-5-5`、`claude-opus-5`、`claude-opus-4-8`、`claude-sonnet-5-5`、`claude-sonnet-5` | `ANTHROPIC_API_KEY` |
 | OpenAI | `openai` | `gpt-6-astra`、`gpt-5.6-sol`、`gpt-5.6-terra`、`gpt-5.6-luna`、`gpt-5.5` | `OPENAI_API_KEY` |
 | Gemini | `gemini` | `gemini-4-argon`、`gemini-3.8-flash`、`gemini-3.6-flash`、`gemini-3.5-flash-lite`、`gemini-3.1-pro-preview` | `GEMINI_API_KEY` |
 
