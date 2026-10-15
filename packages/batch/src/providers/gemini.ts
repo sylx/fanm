@@ -74,6 +74,8 @@ function asProviderError(e: unknown): ProviderError {
     if (e.message.includes("API_KEY_INVALID")) return new ProviderError(message, "auth", false);
     switch (e.status) {
         case 401: case 403: return new ProviderError(message, "auth", false);
+        // プリペイドの残高切れ。
+        case 402: return new ProviderError(message, "quota", false);
         case 429: return new ProviderError(message, "rate", false);
         case 400: case 404: return new ProviderError(message, "bad-request", false);
         // 混んでいて受け取ってもらえなかった。処理されていないので費用はゼロ。
