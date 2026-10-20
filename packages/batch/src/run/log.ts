@@ -2,6 +2,10 @@
 //
 // 走っているときに別の端末から `fanm make` すると、鍵が取れないかわりに
 // このファイルを追いかけて、いま何をしているか（AIの思考も）が見える。
+//
+// AIの思考や出力の垂れ流し（stream）は、画面が端末のときだけ画面にも出す。
+// コンテナのログ（端末ではない）には一行ずつの出来事（line）だけが残り、
+// 何が作られ、何が落ち、次がいつかを追える。垂れ流しは run.log にはいつも残る。
 
 import { appendFileSync, existsSync, mkdirSync, openSync, readSync, closeSync, renameSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -14,6 +18,10 @@ const CHECK_EVERY = 1024 * 1024;
 
 export class Log {
     private sinceCheck = 0;
+    /** 垂れ流しを画面にも出すか。 */
+    private readonly echo = process.stdout.isTTY === true;
+    /** 垂れ流しが行の途中で終わっているか。次の一行を行頭から始めるため。 */
+    private open = { console: false, file: false };
 
     constructor(private readonly path: string) {
         mkdirSync(dirname(path), { recursive: true });
@@ -21,23 +29,37 @@ export class Log {
 
     /** 一行。時刻をつけて画面とファイルへ。 */
     line(message: string): void {
-        this.write(`[${new Date().toISOString()}] ${message}\n`);
+        const text = `[${new Date().toISOString()}] ${message}\n`;
+        this.toConsole(this.open.console ? `\n${text}` : text);
+        this.toFile(this.open.file ? `\n${text}` : text);
     }
 
     /** 改行のない書き足し。AIの思考や出力をそのまま流すのに使う。 */
     stream(text: string): void {
-        this.write(text);
+        if (!text) return;
+        if (this.echo) this.toConsole(text);
+        this.toFile(text);
     }
 
-    private write(text: string): void {
+    private toConsole(text: string): void {
         process.stdout.write(text);
+        this.open.console = !text.endsWith("\n");
+    }
+
+    private toFile(text: string): void {
         appendFileSync(this.path, text);
+        this.open.file = !text.endsWith("\n");
         this.sinceCheck += Buffer.byteLength(text);
         if (this.sinceCheck < CHECK_EVERY) return;
         this.sinceCheck = 0;
         // 一つ前だけ残す。古い思考を無限に持っていても仕方がない。
         if (existsSync(this.path) && statSync(this.path).size > MAX_BYTES) renameSync(this.path, `${this.path}.1`);
     }
+}
+
+/** ログに出す時刻。分まで、UTC（行頭の時刻と同じ）。 */
+export function clock(at: Date): string {
+    return `${at.toISOString().slice(0, 16).replace("T", " ")} UTC`;
 }
 
 export function logPath(varDir: string): string {

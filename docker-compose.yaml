@@ -25,7 +25,7 @@ services:
       - FANM_NOTIFY_WEBHOOK=${FANM_NOTIFY_WEBHOOK:-}
     volumes:
       - fanm-var:/data
-    # 思考をそのまま流すので、コンテナのログは溜め込まない（本体は /data/run.log）。
+    # コンテナのログは出来事だけ（思考の垂れ流しは /data/run.log にだけ残る）。それでも溜め込まない。
     logging:
       driver: json-file
       options:

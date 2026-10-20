@@ -124,6 +124,7 @@ async function plan(ctx: Making, job: Job): Promise<void> {
     // 企画をやり直しても同じ縛りになる。
     const twist = drawTwist(form.id, past, createRandom(job.seed ^ 0x7c157));
     ctx.log.line(`${job.id}: 型は${form.label}、縛りは ${twist.map(t => `${t.axis}=${t.option}`).join(" / ")}`);
+    ctx.log.line(`${job.id}: 企画を ${ctx.provider.model} に頼む`);
     const result = await call(ctx.provider, ctx.ledger, job.id, "plan",
         planRequest(past, form, twist, job.persona, ctx.config.generation.planMaxTokens), deltas(ctx.log));
     job.calls.push(result.log);
@@ -166,9 +167,10 @@ async function generate(ctx: Making, job: Job): Promise<void> {
         maxOutputTokens: generation.generateMaxTokens,
         reasoningEffort: thinkingRanAway ? "none" : generation.reasoningEffort
     });
+    ctx.log.line(`${job.id}: 試行${n} の${n === 1 ? "生成" : "修正"}を ${ctx.provider.model} に頼む${thinkingRanAway ? "（思考なし）" : ""}`);
     const result = await call(ctx.provider, ctx.ledger, job.id, n === 1 ? "generate" : `repair-${n - 1}`, request, deltas(ctx.log));
     job.calls.push(result.log);
-    ctx.log.line(`思考 ${result.log.reasoningTokens} / 本文 ${result.log.outputTokens - result.log.reasoningTokens} トークン、$${result.log.usd.toFixed(4)}`);
+    ctx.log.line(`${job.id}: 試行${n} の応答 — 思考 ${result.log.reasoningTokens} / 本文 ${result.log.outputTokens - result.log.reasoningTokens} トークン、$${result.log.usd.toFixed(4)}`);
 
     // 思考だけで出力上限に達すると本文が空で返る。会話に空の発言を残さず、やり直す。
     if (!result.text.trim()) {
@@ -205,6 +207,7 @@ async function check(ctx: Making, job: Job): Promise<void> {
         { label: `実例（templates/${form}/work.ts）`, source: template(form) },
         ...ctx.archive.sources(form, 3)
     ];
+    ctx.log.line(`${job.id}: 試行${attempt.n} を検査する`);
     const report = await checkWork(dir, job.seed, { references, maxOverlap: ctx.config.generation.maxOverlap });
     writeFileSync(join(dir, "report.json"), JSON.stringify(report, null, 2));
     finishAttempt(ctx, job, { ok: report.ok, stage: report.stage, problems: report.problems });

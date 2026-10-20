@@ -8,6 +8,10 @@
 //
 // 止まらないことを第一にする。日常の失敗（不採用、一時的な通信断）は記録して次へ進み、
 // 放っておいても直らないもの（鍵切れ、権限不足、続けざまの想定外）だけ人を呼ぶ。
+// 不採用は人を呼ばないが、企画と理由を便りとして送る（何が落ちているかを見えるように）。
+//
+// ログ（コンテナのログ）には、一作品ごとに「■ 採用 / 不採用」のまとめと、
+// 公開した作品の題とURL、次の制作の予定が出る。予定は変わったときだけ書く。
 // 途中で殺されても、ジョブと台帳と覚え書きは書かれた時点まで残るので、続きから再開する。
 
 import { mkdirSync } from "node:fs";
@@ -15,16 +19,17 @@ import { join } from "node:path";
 import { Archive } from "../archive/archive.js";
 import { BudgetExceeded, Ledger } from "../budget/ledger.js";
 import { changedSections, ConfigWatch, type Config, type ProviderConfig } from "../config.js";
-import { JobStore } from "../jobs/job.js";
+import { JobStore, type Job } from "../jobs/job.js";
 import { make } from "../jobs/make.js";
+import { facts, summary } from "../jobs/summary.js";
 import { deckBrief, deckNamed, verifyDeck } from "../providers/deck.js";
 import { ProviderError } from "../providers/provider.js";
 import { PublishError, type Publisher } from "../publish/publisher.js";
 import { assemble } from "../publish/site.js";
-import { decide, UNKNOWN_COST_RATIO } from "../scheduler/scheduler.js";
+import { decide, UNKNOWN_COST_RATIO, type SchedulerDecision } from "../scheduler/scheduler.js";
 import { acquire } from "./lock.js";
 import { takeRequest } from "./request.js";
-import { Log, logPath } from "./log.js";
+import { clock, Log, logPath } from "./log.js";
 import { COLOR, Notifier, type Embed } from "./notify.js";
 import { StateStore, statePath } from "./state.js";
 
@@ -36,6 +41,11 @@ const PUBLISH_RETRY_MS = 30 * 60_000;
 const BACKOFF_MS = [60_000, 300_000, 900_000, 3_600_000];
 /** 続けざまに何回失敗したら人を呼ぶか。 */
 const CALL_HUMAN_AFTER = 3;
+/**
+ * 次の予定がこれ以上ずれたら書き直す。予定は残予算と残日数から毎回計算し直すので、
+ * 端数だけなら30秒ごとに少しずつ動く。それをいちいち書くと、ログが予定で埋まる。
+ */
+const RESCHEDULE_NOTE_MS = 10 * 60_000;
 
 export interface LoopOptions {
     readonly config: Config;
@@ -53,6 +63,14 @@ export interface LoopOptions {
 }
 
 const sleep = (ms: number) => new Promise(done => setTimeout(done, ms));
+
+/** いまから見て、いつか。 */
+function fromNow(at: Date): string {
+    const ms = at.getTime() - Date.now();
+    if (ms <= 60_000) return "まもなく";
+    if (ms < 3_600_000) return `あと${Math.round(ms / 60_000)}分`;
+    return `あと${(ms / 3_600_000).toFixed(1)}時間`;
+}
 
 export async function runLoop(options: LoopOptions): Promise<number> {
     const { root } = options;
@@ -119,7 +137,27 @@ export async function runLoop(options: LoopOptions): Promise<number> {
 
     let nextPublishAt = 0;      // 公開に失敗したときだけ先へ延びる
     let failures = 0;
-    let announced = "";
+    /** 最後にログへ書いた予定。変わったときだけ書き直す。 */
+    let announced: { paused?: string; next: number } | undefined;
+
+    /** いまの残予算と実費から、次にいつ作るか。 */
+    const schedule = (now: Date): SchedulerDecision => decide({
+        now,
+        lastAttemptAt: store.state.lastAttemptAt,
+        remainingUsd: ledger.remainingThisMonth(),
+        costPerAttemptUsd: ledger.costPerJob() ?? config.budget.perWorkUsd * UNKNOWN_COST_RATIO,
+        maxAttemptsPerDay: config.production.attemptsPerDay
+    });
+
+    /** 次の予定を書く。休みに入った・明けた、または時刻が大きく動いたときだけ。 */
+    const announceNext = (decision: SchedulerDecision): void => {
+        const next = decision.next.getTime();
+        if (announced && announced.paused === decision.paused && Math.abs(announced.next - next) < RESCHEDULE_NOTE_MS) return;
+        announced = { paused: decision.paused, next };
+        log.line(decision.paused
+            ? `休む: ${decision.paused}。再開は ${clock(decision.next)}（${decision.reason}）`
+            : `次の制作は ${clock(decision.next)}（${fromNow(decision.next)}）。${decision.reason}`);
+    };
 
     for (;;) {
         const now = new Date();
@@ -127,48 +165,43 @@ export async function runLoop(options: LoopOptions): Promise<number> {
             refresh();
             // 頼まれていれば受け取る。応じられなくても、ここで消える（頼みは溜めない）。
             const asked = takeRequest(root);
-            const decision = decide({
-                now,
-                lastAttemptAt: store.state.lastAttemptAt,
-                remainingUsd: ledger.remainingThisMonth(),
-                costPerAttemptUsd: ledger.costPerJob() ?? config.budget.perWorkUsd * UNKNOWN_COST_RATIO,
-                maxAttemptsPerDay: config.production.attemptsPerDay
-            });
-            // 同じことを30秒ごとに書かない。変わったときだけ一行。
-            const line = decision.paused
-                ? `休む: ${decision.paused}（${decision.reason}）`
-                : `次の制作は ${decision.next.toISOString()}。${decision.reason}`;
-            if (line !== announced) {
-                log.line(line);
-                announced = line;
-            }
+            let decision = schedule(now);
             if (asked) {
                 log.line(decision.paused
                     ? `「いま作れ」と頼まれたが、${decision.paused}`
                     : "「いま作れ」と頼まれた。間隔を待たずに作り、出来たらその場で公開する");
-                announced = "";
+                announced = undefined;
             }
-            setPhase(decision.paused ? "paused" : "waiting", decision.next);
 
             const due = !decision.paused && (options.once || resume || asked || decision.next.getTime() <= now.getTime());
+            // これから作るなら「次は今」とは書かない。作り終えたところで次の予定を書く。
+            if (!due) announceNext(decision);
+            setPhase(decision.paused ? "paused" : "waiting", decision.next);
+
+            let busy = false;
             if (due) {
                 resume = false;
+                busy = true;
                 setPhase("making");
                 // 始めた時刻を先に書く。作っている途中で落ちても、次の間隔はここから数える。
                 store.change(s => { s.lastAttemptAt = new Date().toISOString(); });
                 await makeOne(asked?.provider ?? options.provider);
-                announced = "";
             }
 
             // 送っていない採用作があれば、すぐ送る。送れなかったら間を置いて送り直す。
             if (Date.now() >= nextPublishAt && unpublished().length) {
+                busy = true;
                 setPhase("publishing");
                 nextPublishAt = await publishOnce() ? 0 : Date.now() + PUBLISH_RETRY_MS;
-                announced = "";
             }
-            // 作り終え、送り終えたら、その場で「待っている」に戻す。次に目を覚ますまで
-            // 「作っている」ままに見えると、外から見届けている側が無駄に待つ。
-            if (phase === "making" || phase === "publishing") setPhase("waiting", decision.next);
+            // 作り終え、送り終えたら、その場で次の予定を書き、「待っている」に戻す。次に
+            // 目を覚ますまで「作っている」ままに見えると、外から見届けている側が無駄に待つ。
+            if (busy) {
+                decision = schedule(new Date());
+                announced = undefined;
+                announceNext(decision);
+                setPhase(decision.paused ? "paused" : "waiting", decision.next);
+            }
             if (failures) {
                 notifier.clear("loop");
                 failures = 0;
@@ -182,7 +215,7 @@ export async function runLoop(options: LoopOptions): Promise<number> {
             }
             setPhase("failing");
             await sleep(BACKOFF_MS[Math.min(failures - 1, BACKOFF_MS.length - 1)]);
-            announced = "";
+            announced = undefined;
             continue;
         }
 
@@ -207,18 +240,52 @@ export async function runLoop(options: LoopOptions): Promise<number> {
             if (only) hand = only;
             else log.line(`札束に ${wanted} がいない。ふだんどおり引く`);
         }
-        log.line(`${job.id}: ${job.state} から開始${options.fake ? "（偽のAI）" : ""}`);
+        log.line(`▶ ${job.id}: 制作を始める（${job.state} から${options.fake ? "、偽のAI" : ""}）`);
         try {
             const done = await make({ config, deck: hand, ledger, jobs, archive, log }, job);
-            const usd = done.calls.reduce((n, c) => n + c.usd, 0);
-            log.line(`${done.id}: ${done.state}（AI 呼出し ${done.calls.length} 回、$${usd.toFixed(4)}）`);
+            log.line(summary(done, done.state === "accepted" ? archive.meta(done.id).title : undefined));
             notifier.clear("provider");
+            if (done.state === "rejected") await reportRejected(done);
         } catch (e) {
             // 月の予算切れはスケジューラーが翌月まで休ませる。ジョブは残り、続きから再開する。
             if (e instanceof BudgetExceeded) log.line(`月間予算に達した: ${e.message}`);
             else if (e instanceof ProviderError && e.fatal) await notifier.tell("provider", `AIのAPIを使えない（${e.kind}）: ${e.message}`);
             else throw e;
         }
+    }
+
+    /**
+     * 不採用を知らせる。人は呼ばない（日常の失敗）が、何を企画して、なぜ落ちたかは
+     * 見えるようにする。同じ理由で落ち続けているなら、それが直すべきところ。
+     * 偽のAIの不採用は送らない（作品の知らせと同じく、偽物は外へ出さない）。
+     */
+    async function reportRejected(job: Job): Promise<void> {
+        if (options.fake) return;
+        const f = facts(job);
+        const reason = job.rejectReason ?? "理由不明";
+        const fields: { name: string; value: string; inline?: boolean }[] = [
+            { name: "不採用の理由", value: reason }
+        ];
+        if (f.lastProblems?.problems.length) {
+            fields.push({ name: `最後の指摘（${f.lastProblems.stage}）`, value: f.lastProblems.problems.join("\n").slice(0, 800) });
+        }
+        fields.push({ name: "型", value: f.form, inline: true });
+        if (f.author) fields.push({ name: "作者", value: f.author, inline: true });
+        if (f.model) fields.push({ name: "モデル", value: f.model, inline: true });
+        if (f.subject) fields.push({ name: "題材", value: f.subject });
+        if (f.twist) fields.push({ name: "縛り", value: f.twist });
+        fields.push({ name: "試行", value: f.attempts });
+        fields.push({ name: "費用", value: `$${f.usd.toFixed(4)}（AI 呼出し ${f.calls} 回）`, inline: true });
+        const title = f.title ?? "（企画の前に止まった）";
+        await notifier.say(`不採用「${title}」— ${reason}`, [{
+            title,
+            // 企画の売り文句。Discord は embed 全体で 6000 字までなので、ここは短めに詰める。
+            ...(f.pitch ? { description: f.pitch.slice(0, 1500) } : {}),
+            color: COLOR.rejected,
+            timestamp: job.updatedAt,
+            fields,
+            footer: { text: job.id }
+        }]);
     }
 
     /** まだ送っていない採用作。 */
@@ -280,7 +347,9 @@ export async function runLoop(options: LoopOptions): Promise<number> {
         }
         try {
             await options.publisher.publish(site);
-            log.line(`${options.publisher.name} へ公開した`);
+            const base = config.publish.siteUrl.replace(/\/$/, "");
+            log.line([`${options.publisher.name} へ公開した（${fresh.length} 件）`,
+                ...fresh.map(id => `    「${archive.meta(id).title}」 ${base}/work/${encodeURIComponent(id)}/`)].join("\n"));
             notifier.clear("publish");
             done();
             await announce(fresh);

@@ -32,6 +32,7 @@ import { overlap } from "./check/overlap.js";
 import { loadConfig, VAR } from "./config.js";
 import { JobStore } from "./jobs/job.js";
 import { make } from "./jobs/make.js";
+import { summary } from "./jobs/summary.js";
 import { FORMS, formOf } from "./plan/forms.js";
 import { template } from "./prompts.js";
 import { deckBrief, deckNamed, FAKE_DECK, verifyDeck } from "./providers/deck.js";
@@ -114,9 +115,9 @@ async function runMake(): Promise<number> {
     }
     log.line(`${job.id}: ${job.state} から開始${fake ? "（偽のAI）" : `（札束は ${deckBrief(deck)}）`}`);
     try {
-        const done = await make({ config, deck, ledger: budget, jobs, archive: new Archive(join(root, "works")), log }, job);
-        const usd = done.calls.reduce((n, c) => n + c.usd, 0);
-        log.line(`${done.id}: ${done.state}（AI 呼出し ${done.calls.length} 回、$${usd.toFixed(4)}）`);
+        const archive = new Archive(join(root, "works"));
+        const done = await make({ config, deck, ledger: budget, jobs, archive, log }, job);
+        log.line(summary(done, done.state === "accepted" ? archive.meta(done.id).title : undefined));
         return done.state === "accepted" ? 0 : 1;
     } catch (e) {
         if (e instanceof BudgetExceeded) log.line(`月間予算に達したので止める: ${e.message}`);
