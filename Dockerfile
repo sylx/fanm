@@ -58,7 +58,14 @@ WORKDIR /app
 
 # 定額の契約で使う公式の CLI（providers/claude-code.ts と codex.ts が呼ぶ）。札束に
 # claude-code / codex の札が無ければ使われない。版は手元で通したものに固定する。
-RUN npm install -g @anthropic-ai/claude-code@2.1.280 @openai/codex@0.147.0 \
+#
+# ca-certificates は Codex のため。slim には証明書の束が無く、node は自前の束を持って
+# いるので困らないが、Codex（Rust）は OS の束を読むので、無いと https に一つも繋がらない
+# （`codex login` が error sending request で落ちる）。
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && npm install -g @anthropic-ai/claude-code@2.1.280 @openai/codex@0.147.0 \
     && npm cache clean --force
 
 COPY --from=build --chown=node:node /app /app
