@@ -92,6 +92,9 @@ const WORDS: Record<ProviderConfig["name"], Words> = {
     openai: LOANWORD,
     gemini: REDUPLICATED,
     claude: ENGLISH,
+    // 定額の CLI は、同じ頭を別の入口から呼んでいるだけ。言葉は中の人に合わせる。
+    "claude-code": ENGLISH,
+    codex: LOANWORD,
     fake: ENGLISH
 };
 

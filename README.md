@@ -78,7 +78,9 @@ Cloudflare Workers
 
 型を決めるだけでは足りません。AIは同じ型の中で、設定だけを変えた同じ段取りの作品を作り続けます。そこで、企画のたびに**縛り**を数枚引いて渡します（`packages/batch/src/plan/variations.ts`）。縛りは題材ではなく作り方を縛るもので（「動きはパレット書き換えだけで作る」「戦わずに隠れて進む」「音は打楽器だけ」）、守るとコードの形が前作と変わります。引くのはジョブの種からなので、同じジョブをやり直しても同じ縛りになります。直近の同じ型で使った札は避けます。
 
-書く相手も引きます。`providers` に並べたAI（いまは DeepSeek、Claude、OpenAI、Gemini）を札束とみなし、型や縛りと同じ引き方でジョブごとに一人当てます（`packages/batch/src/providers/deck.ts`）。同じ企画、同じ型、同じ縛りでも、書く頭が違えばコードの形が違います。縛りが型の内側を散らすのに対して、これは型の外側から散らす仕掛けです。札には引かれやすさを付けられるので、単価の高い相手を「たまに」にできます。誰が書いたかは作品に残り、ギャラリーのカードに出ます。
+札と型は固定にしません。同じ札を引き続けると、札の言い回しがそのまま題に写りはじめ、組み合わせも尽きます。月に一度、先月の作品を AI に読ませて、型を二つ三つ入れ替え、札を半分ほど差し替えます（**シーズン**。`.github/workflows/season.yml`、[docs/architecture.md](docs/architecture.md) の「シーズンの作り変え」）。作り変えはプルリクエストとして届き、マージすると次の制作から効きます。毎回の企画でも、直近の題と題材に繰り返し出た語を数えて、使わないよう名指しします。
+
+書く相手も引きます。`providers` に並べたAI（いまは DeepSeek、Claude、OpenAI、Gemini）を札束とみなし、型や縛りと同じ引き方でジョブごとに一人当てます（`packages/batch/src/providers/deck.ts`）。同じ企画、同じ型、同じ縛りでも、書く頭が違えばコードの形が違います。縛りが型の内側を散らすのに対して、これは型の外側から散らす仕掛けです。札には引かれやすさを付けられるので、単価の高い相手を「たまに」にできます。Claude と OpenAI は、従量の API ではなく定額の契約の枠でも使えます（[docs/operate.md](docs/operate.md) の「定額の契約で使う」）。誰が書いたかは作品に残り、ギャラリーのカードに出ます。
 
 ### 生成
 
@@ -191,7 +193,7 @@ AIのAPIキーとCloudflareの認証情報はバッチ処理が管理し、生�
 git submodule update --init
 npm install
 npm run typecheck
-npm run check:templates       # バッチ：型ごとのテンプレートをヘッドレスで動かして撮影
+npm run check:templates       # バッチ：シーズンのデータを確かめ、いまの型の実例をヘッドレスで動かして撮影
 npm run gallery:dev           # /work/<id>/ のHTML・React UIもプレビュー。テンプレートは /play.html?work=ambient
 npm run publish:local         # 公開物を var/site/ に組み立てる（どこへも送らない）
 npm run start:fake -- --once  # 偽のAIで制作の輪を一周（企画から公開物の組み立てまで）

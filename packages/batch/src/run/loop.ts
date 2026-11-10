@@ -250,6 +250,8 @@ export async function runLoop(options: LoopOptions): Promise<number> {
             // 月の予算切れはスケジューラーが翌月まで休ませる。ジョブは残り、続きから再開する。
             if (e instanceof BudgetExceeded) log.line(`月間予算に達した: ${e.message}`);
             else if (e instanceof ProviderError && e.fatal) await notifier.tell("provider", `AIのAPIを使えない（${e.kind}）: ${e.message}`);
+            // 定額の枠が尽き、ほかに頼める相手もいない。ジョブは残っているので、次の回に続きから進む。
+            else if (e instanceof ProviderError && e.kind === "limit") log.line(`頼める相手が全員、枠切れで休んでいる。次の回に続ける: ${e.message}`);
             else throw e;
         }
     }

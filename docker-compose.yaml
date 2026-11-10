@@ -18,6 +18,11 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      # 定額の契約で使う相手（札束の claude-code / codex）。API キーとは別。
+      # Claude は手元で `claude setup-token` を実行して出てきたトークンを入れる。
+      # Codex は鍵ではなく、ボリューム上のログイン（/data/codex/auth.json）を使う。
+      - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-}
+      - CODEX_HOME=/data/codex
       # 公開先（Cloudflare Workers）。
       - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN}
       - CLOUDFLARE_ACCOUNT_ID=${CLOUDFLARE_ACCOUNT_ID}

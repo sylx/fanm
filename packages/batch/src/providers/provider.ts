@@ -48,12 +48,18 @@ export interface Provider {
  *
  * - `billed: false`   相手が処理せずに断ったと分かっている（4xx）。費用ゼロで精算してよい。
  * - `billed: unknown` 途中で切れた・5xx など。予約額のまま確定する。
+ *
+ * `limit` は定額の契約の枠が尽きたとき（providers/cli.ts）。待てば戻るが、戻るのは
+ * 数時間先なので再試行はしない。人も呼ばない。`until` までその相手を休ませ、
+ * その回は別の相手に書かせる（jobs/make.ts）。
  */
 export class ProviderError extends Error {
     constructor(
         message: string,
-        readonly kind: "auth" | "quota" | "rate" | "server" | "network" | "bad-request",
-        readonly billed: false | "unknown"
+        readonly kind: "auth" | "quota" | "rate" | "server" | "network" | "bad-request" | "limit",
+        readonly billed: false | "unknown",
+        /** `limit` のとき、枠が戻る時刻。 */
+        readonly until?: Date
     ) {
         super(message);
     }

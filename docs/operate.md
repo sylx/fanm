@@ -216,6 +216,8 @@ APIキーを入れる環境変数は事業者ごとに決まっていて、設�
 { "providers": [{ "name": "claude", "model": "claude-opus-5-5" }] }
 ```
 
+Claude と OpenAI は、API ではなく定額の契約の枠でも使える（下の「定額の契約で使う」）。
+
 混ぜるなら、札を並べて `share`（引かれやすさ）を書く。下は「六作に一作を Claude に頼む」。
 
 ```json
@@ -245,6 +247,57 @@ APIキーを入れる環境変数は事業者ごとに決まっていて、設�
 `claude-opus-5-5` を札束に入れるなら、その札に `perWorkUsd` を $2.5 ほど付ける（企画1回・生成1回・修正2回まで見た額）。全体の `budget.perWorkUsd` を上げてしまうと、安い相手の暴走まで許すことになる。月額（`budget.monthlyUsd`）は使い切らないように制作の間隔が自動で延びる（実測の一作品あたりの費用から決まる）ので、高い相手を混ぜると作る本数が減る。
 
 実費は予約額より下がる。予約は入力を高めに見積もっていて、Claude では制作ルールとAPI資料（6万字、どの呼出しでも同じ）に入力キャッシュの印を付けているので、二回目からの読み出しは十分の一（`claude-opus-5-5` は二十分の一）で数えられる。
+
+### 定額の契約で使う（Claude Pro / Max、ChatGPT Plus / Pro）
+
+API は従量で、Claude と OpenAI の上位モデルは一作品 $0.4〜1.0 かかる（安い相手の10〜20倍）。同じモデルは、定額の契約に付いてくる公式の CLI からも呼べる。札の `name` を替えるだけで、費用は台帳に載らなくなる。
+
+| 相手 | `name` | `model` | 認証 |
+| --- | --- | --- | --- |
+| Claude Code | `claude-code` | `claude-opus-5-5`、`claude-sonnet-5-5` など（契約で使えるもの） | 環境変数 `CLAUDE_CODE_OAUTH_TOKEN` |
+| Codex | `codex` | `gpt-5.6-sol` など（契約で使えるもの）。`default` と書くと Codex の既定に任せる | ボリューム上の `/data/codex/auth.json` |
+
+```json
+{
+  "providers": [
+    { "name": "deepseek", "model": "deepseek-v4-pro", "share": 6 },
+    { "name": "claude-code", "model": "claude-sonnet-5-5", "share": 2 },
+    { "name": "claude-code", "model": "claude-opus-5-5", "share": 1, "reuse": 0.8 },
+    { "name": "codex", "model": "gpt-5.6-sol", "share": 2 }
+  ]
+}
+```
+
+- **費用は $0 で記録される。** `perWorkUsd` は書かなくてよい。月額の上限にも数えない。
+- **枠は人の利用と共有している。** 尽きると、その相手を枠が戻る時刻まで休ませ（分からなければ3時間）、その回は札束の別の相手が続きを書く。人は呼ばない。全員が休んでいたら、ジョブを残して次の回に続ける。ログには `枠が尽きた` と出る。
+- **同じモデルを API の札（`claude`、`openai`）と並べない。** 誰が書いたかはモデル名で数えるので、区別がつかなくなる。
+- **API キーは CLI に渡らない。** 子プロセスには要る環境変数だけを渡す（`providers/cli.ts`）。`ANTHROPIC_API_KEY` が見えると Claude Code はそちらで従量に請求するため。定額へ移した相手の API キーは、Coolify の環境変数から消してよい。
+- 道具は切ってあり、空のディレクトリで動く。エージェントとしてではなく、文章を書く相手としてだけ使う。
+- `model` に書いた名前が契約で使えるかは、呼ぶまで分からない（単価表が無いので起動時には弾けない）。足したら `npm run makenow -- --provider <モデル名>` で一度通す。
+
+**Claude Code の用意**
+
+1. 手元で `claude setup-token` を実行する。ブラウザで承認すると、長期（一年）のトークンが出る。
+2. Coolify の環境変数に `CLAUDE_CODE_OAUTH_TOKEN` として入れ、再デプロイする。
+3. 切れたら（`人の対応が必要: AIのAPIを使えない（auth）`）、同じ手順で作り直す。
+
+**Codex の用意**
+
+1. 本番のコンテナに入り、その中でログインする。表示された URL とコードを、手元のブラウザで承認する。
+
+    ```bash
+    scripts/fanm-shell.sh mkdir -p /data/codex
+    scripts/fanm-shell.sh codex login --device-auth
+    ```
+
+2. `/data/codex/auth.json` ができる。Codex はおよそ8日ごとにトークンを更新して書き戻すので、置き場所は永続ボリュームのまま動かさない。
+3. **手元の `~/.codex/auth.json` を写して持っていかない。** 同じログインを二つの機械で使うと、片方の更新でもう片方が切れる。本番は本番でログインする。
+4. 切れたら（`auth`）、もう一度 1 をやる。
+
+OpenAI はこの使い方を「信頼できる私的な自動化」向けの上級の手順として案内していて、ふつうの自動化には API キーを勧めている。Anthropic は、契約でログインした `claude -p` は契約の枠から引かれると案内している（別枠の課金へ移す話は 2026-06 に保留になった）。どちらも変わりうるので、急に `auth` や `limit` が続くようになったら、まず案内を見る。
+
+- [Use the Claude Agent SDK with your Claude plan](https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan)
+- [Maintain Codex account auth in CI/CD](https://developers.openai.com/codex/auth/ci-cd-auth)
 
 ### 作り手の性格とペンネーム
 
@@ -468,6 +521,8 @@ scripts/conf-push.sh 別の.json  # 送るファイルを指定する
 | `いま: 休んでいる` | 予算切れ。翌月まで待つ | 増やすなら `/data/fanm.json` の `budget.monthlyUsd` |
 | 次の制作まで待てない | 間隔は残予算から決まっている | `makenow` で横から頼む（[次を待たずに作らせる](#次を待たずに作らせる)） |
 | `人の対応が必要: AIのAPIを使えない` | 鍵切れ・残高切れ | 環境変数を直して再デプロイ |
+| `人の対応が必要: AIのAPIを使えない（auth）` で相手が Claude Code / Codex | 定額のログイン切れ | 「定額の契約で使う」の用意をやり直す |
+| `枠が尽きた` が続く | 定額の枠を人の利用と取り合っている | その札の `share` を下げる。人は呼ばれないので、放っておいてもよい |
 | `人の対応が必要: 公開できない` | Cloudflare の鍵か権限 | [docs/deploy.md](deploy.md) の手順で作り直す |
 | `目印は…、古い` | 固まっている | コンテナを再起動する。ジョブは続きから進む |
 | `想定外の失敗` が続く | ログに残る | `<VAR>/run.log` の該当箇所を見る。間を置いて再試行は続いている |

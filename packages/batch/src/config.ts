@@ -12,7 +12,12 @@ if (existsSync(".env")) process.loadEnvFile(".env");
 
 /** 頼む相手ひとり。札束の一枚（providers/deck.ts）。 */
 export interface ProviderConfig {
-    readonly name: "deepseek" | "claude" | "openai" | "gemini" | "fake";
+    /**
+     * `claude-code` と `codex` は、定額の契約の枠で使う公式の CLI（providers/cli.ts）。
+     * API キーは要らず、費用は台帳に載らない。同じモデルを API の札（`claude`、
+     * `openai`）と並べると、どちらが書いたか区別がつかなくなるので、片方だけにする。
+     */
+    readonly name: "deepseek" | "claude" | "openai" | "gemini" | "claude-code" | "codex" | "fake";
     readonly model: string;
     /** 引かれやすさ。大きいほどよく当たる。0 なら引かない（札束に残したまま休ませる）。省くと 1。 */
     readonly share?: number;

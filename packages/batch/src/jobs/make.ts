@@ -20,8 +20,8 @@ import { parsePlan, planRequest } from "../plan/planner.js";
 import { drawTwist } from "../plan/variations.js";
 import { template } from "../prompts.js";
 import { call } from "../providers/call.js";
-import { createProvider, drawProvider } from "../providers/deck.js";
-import type { OnDelta, Provider } from "../providers/provider.js";
+import { createProvider, drawProvider, rest, rested } from "../providers/deck.js";
+import { ProviderError, type OnDelta, type Provider } from "../providers/provider.js";
 import type { Log } from "../run/log.js";
 import type { Job, JobStore } from "./job.js";
 
@@ -57,13 +57,17 @@ function deltas(log: Log): OnDelta {
  * 同じ相手になる。札束から消えた相手が残っていたら引き直す（設定を変えたとき）。
  */
 function draw(ctx: MakeContext, job: Job): ProviderConfig {
-    const kept = ctx.deck.find(e => e.model === job.model);
+    // 枠が尽きて休んでいる相手は引かない。全員が休んでいるなら、そのまま頼んで断られる
+    // （相手を名指しされたときなど。断られたことは呼んだ側が記録する）。
+    const available = rested(ctx.deck);
+    const deck = available.length ? available : ctx.deck;
+    const kept = deck.find(e => e.model === job.model);
     if (kept) {
         // 性格を持たせる前に企画まで進んでいたジョブには、途中から着せない。
         if (!job.persona && !job.plan) cast(ctx, job, kept);
         return kept;
     }
-    const entry = drawProvider(ctx.deck, ctx.archive.models(), createRandom(job.seed ^ 0xdec4));
+    const entry = drawProvider(deck, ctx.archive.models(), createRandom(job.seed ^ 0xdec4));
     job.model = entry.model;
     ctx.log.line(`${job.id}: 頼む相手は ${entry.name} の ${entry.model}`);
     // 名前はモデルごとなので、相手を引き直したら作り手も引き直す。
@@ -108,6 +112,17 @@ export async function make(base: MakeContext, job: Job): Promise<Job> {
         if (e instanceof BudgetExceeded && e.scope === "work") {
             reject(ctx, job, `作品予算を超えた: ${e.message}`);
             ctx.jobs.save(job);
+        } else if (e instanceof ProviderError && e.kind === "limit") {
+            // 定額の枠が尽きた。この相手を戻る時刻まで休ませ、続きを別の相手に書かせる。
+            // 企画まで済んでいれば、企画はそのまま使う。ほかに誰もいなければ、ジョブを
+            // 残して呼んだ側へ返す（次の回に、戻っていればこの相手が、いなければ別の相手が続ける）。
+            const until = e.until ?? new Date(Date.now() + 3 * 3600_000);
+            rest(entry.model, until);
+            ctx.log.line(`${job.id}: ${entry.model} の枠が尽きた。${until.toISOString()} まで休ませる（${e.message}）`);
+            if (!rested(base.deck).length) throw e;
+            job.model = undefined;
+            ctx.jobs.save(job);
+            return make(base, job);
         } else {
             throw e;
         }
@@ -116,7 +131,8 @@ export async function make(base: MakeContext, job: Job): Promise<Job> {
 }
 
 async function plan(ctx: Making, job: Job): Promise<void> {
-    const past = ctx.archive.plans();
+    // 直近120作。詳しく見せるのは近い24作だけで、残りは題と題材（planner.ts の pastBrief）。
+    const past = ctx.archive.plans(120);
     // 型はAIに選ばせない。過去作に少ない型を当てる。同じジョブなら毎回同じ型。
     const form = job.form ? formOf(job.form) : pickForm(past, createRandom(job.seed));
     job.form = form.id;

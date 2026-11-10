@@ -69,6 +69,9 @@ export async function assemble(worksDir: string, siteDir: string): Promise<Assem
         .map(w => ({ ...w.meta, work: `/works/${w.id}/work.js`, thumb: `/works/${w.id}/thumb.png` }))
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     writeAtomic(join(siteDir, "works", "index.json"), JSON.stringify(catalog, null, 2));
+    // 企画の一覧。月次の作り変え（.github/workflows/season.yml）が、型・縛り・題材の
+    // 偏りを数えるのに読む。作品庫は chevron にしか無いので、公開物を通して渡す。
+    writeAtomic(join(siteDir, "works", "plans.json"), JSON.stringify(plans(worksDir, catalog), null, 2));
     const { index, files } = catalogFiles(catalog);
     const indexPath = join(siteDir, "works", "catalog.json");
     const previousPath = join(siteDir, "works", "catalog-previous.json");
@@ -91,6 +94,18 @@ export async function assemble(worksDir: string, siteDir: string): Promise<Assem
     const removed = copyShell(siteDir);
     writeFileSync(join(siteDir, "_headers"), HEADERS);
     return { works: catalog.length, built, engines, removed, withdrawn };
+}
+
+/**
+ * 採用作の企画を新しい順に。企画に入っているのは題、題材、段取り、縛りで、
+ * 認証情報も制作ログも含まない（それらは private/job.json と report.json の側）。
+ */
+function plans(worksDir: string, catalog: readonly CatalogEntry[]): unknown[] {
+    return catalog.flatMap(entry => {
+        const path = join(worksDir, entry.id, "private", "plan.json");
+        if (!existsSync(path)) return [];
+        return [{ id: entry.id, model: entry.model, ...JSON.parse(readFileSync(path, "utf8")) as object }];
+    });
 }
 
 /** 公開物の works/ のうち、作品のディレクトリでないもの。 */

@@ -55,12 +55,21 @@ RUN mkdir -p /app/.wrangler
 
 FROM node:24-slim
 WORKDIR /app
+
+# 定額の契約で使う公式の CLI（providers/claude-code.ts と codex.ts が呼ぶ）。札束に
+# claude-code / codex の札が無ければ使われない。版は手元で通したものに固定する。
+RUN npm install -g @anthropic-ai/claude-code@2.1.280 @openai/codex@0.147.0 \
+    && npm cache clean --force
+
 COPY --from=build --chown=node:node /app /app
 
 # 制作状態の置き場所。Coolify の永続ボリュームをここに繋ぐ。
 # 設定を volume 側に置けば（/data/fanm.json）、作り直さずに予算や頻度を変えられる。
+# CODEX_HOME は Codex のログイン（auth.json）の置き場所。Codex が更新のたびに書き戻すので、
+# 永続ボリュームの上に置く。
 ENV FANM_VAR=/data \
     FANM_CONFIG=/data/fanm.json \
+    CODEX_HOME=/data/codex \
     NODE_ENV=production
 RUN mkdir -p /data && chown node:node /data
 VOLUME /data

@@ -1,0 +1,169 @@
+# 月に一度、作品の型と縛りの札を作り変えて、プルリクエストにする。
+#
+# 型と札を固定のままにすると作品が似てくる（plan/season.ts の冒頭）。ここでは
+# Claude Code に先月の企画を読ませ、templates/ の中を入れ替えさせる。指示は
+# prompts/season.md。
+#
+# 本番のコンテナ（chevron）には、自分の型や札を書き換える権限を持たせない。
+# 作り変えはここでやり、検査に通ったものだけを人がマージする。マージすると
+# deploy.yml が配り直し、次の制作から新しいシーズンで引かれる。
+#
+# 要る秘密（Settings → Secrets and variables → Actions）:
+#   CLAUDE_CODE_OAUTH_TOKEN  手元で `claude setup-token` を実行して出てきたもの。
+#                            定額の契約（Pro / Max）の枠で動く。API キーではない。
+#
+# 要る設定（Settings → Actions → General → Workflow permissions）:
+#   「Allow GitHub Actions to create and approve pull requests」に印を付ける。
+#
+# 変えられるもの（Settings → Secrets and variables → Actions → Variables）:
+#   FANM_SITE_URL   公開先。省くと https://fanm.oyabanare.com
+#   SEASON_MODEL    作り変えに使うモデル。省くと claude-opus-5-5。契約で使えない
+#                   モデルを指すと「作り変える」の段で止まる。
+
+name: season
+
+on:
+  schedule:
+    # 毎月1日の 09:00（日本時間）。
+    - cron: '0 0 1 * *'
+  workflow_dispatch:
+    inputs:
+      model:
+        description: 使うモデル（空なら SEASON_MODEL、それも無ければ claude-opus-5-5）
+        required: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: season
+  cancel-in-progress: false
+
+jobs:
+  renew:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      TZ: Asia/Tokyo
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # 型検査と実例の検査は engine/fantasy-msx のソースまで見る
+          submodules: recursive
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Claude Code を入れる
+        # 版は Dockerfile と揃える。
+        run: npm install -g @anthropic-ai/claude-code@2.1.280
+
+      - name: 今月の名前を決める
+        id: month
+        run: |
+          month=$(date +%Y-%m)
+          echo "month=$month" >> "$GITHUB_OUTPUT"
+          echo "branch=season/$month" >> "$GITHUB_OUTPUT"
+
+      - name: すでに今月の分が出ていないか確かめる
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ steps.month.outputs.branch }}
+        run: |
+          if [ -n "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[].number')" ]; then
+            echo "$BRANCH のプルリクエストがもう開いている。閉じるかマージしてからやり直す" >&2
+            exit 1
+          fi
+
+      - name: 先月までの企画を取ってくる
+        env:
+          SITE: ${{ vars.FANM_SITE_URL || 'https://fanm.oyabanare.com' }}
+        run: |
+          # 作品庫は chevron にしか無いので、公開物を通して読む（publish/site.ts が出す）。
+          # 取れなくても止めない。過去作なしで作り変えることになるが、それは記録に残る。
+          mkdir -p var/season-input
+          curl -fsS "$SITE/works/plans.json" -o var/season-input/plans.json \
+            || echo "plans.json を取れなかった。過去作のデータなしで進める" >&2
+          ls -l var/season-input
+
+      - name: 作り変える
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          MODEL: ${{ inputs.model || vars.SEASON_MODEL || 'claude-opus-5-5' }}
+          MONTH: ${{ steps.month.outputs.month }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+            echo "CLAUDE_CODE_OAUTH_TOKEN を Actions の秘密に入れる（手元で claude setup-token）" >&2
+            exit 1
+          fi
+          # 書けるのはファイルの編集と、検査の二つのコマンドだけ。外へは出さない。
+          # 尋ねてくる相手がいないので、許していないことは断らせる。
+          { cat prompts/season.md; printf '\n\n今月は %s です。\n' "$MONTH"; } | claude -p \
+            --model "$MODEL" \
+            --effort high \
+            --permission-mode acceptEdits \
+            --permission-prompts none \
+            --strict-mcp-config \
+            --allowedTools "Read" "Glob" "Grep" "Edit" "Write" \
+              "Bash(npm run typecheck)" "Bash(npm run check:templates)" \
+              "Bash(npx tsx packages/batch/src/cli.ts check *)" \
+              "Bash(jq *)" "Bash(ls *)" "Bash(wc *)" "Bash(sort *)" "Bash(uniq *)" "Bash(head *)" "Bash(tail *)" \
+            --disallowedTools "WebFetch" "WebSearch" \
+            | tee var/season-input/claude.log
+
+      - name: 触ってよい場所だけが変わったか確かめる
+        env:
+          MONTH: ${{ steps.month.outputs.month }}
+        run: |
+          set -euo pipefail
+          # var/ は .gitignore に入っているので、ここには出てこない。
+          changed=$(git status --porcelain --untracked-files=all | awk '{print $NF}')
+          if [ -z "$changed" ]; then
+            echo "何も変わっていない" >&2
+            exit 1
+          fi
+          outside=$(echo "$changed" | grep -v -E '^(templates/|docs/seasons/)' || true)
+          if [ -n "$outside" ]; then
+            echo "templates/ と docs/seasons/ の外が変わっている:" >&2
+            echo "$outside" >&2
+            exit 1
+          fi
+          if [ "$(jq -r .season templates/season.json)" != "$MONTH" ]; then
+            echo "templates/season.json の season が $MONTH になっていない" >&2
+            exit 1
+          fi
+
+      # ここから先は、エージェントの言い分ではなく、こちらで確かめる。
+      - name: 型検査
+        run: npm run typecheck
+
+      - name: シーズンと実例の検査
+        run: npm run check:templates
+
+      - name: プルリクエストにする
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MONTH: ${{ steps.month.outputs.month }}
+          BRANCH: ${{ steps.month.outputs.branch }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$BRANCH"
+          git add templates docs/seasons
+          git commit -m "シーズン $MONTH: 型と縛りの札を作り変える"
+          git push --force origin "$BRANCH"
+          body="docs/seasons/$MONTH.md"
+          if [ ! -f "$body" ]; then
+            echo "記録（$body）が無い。変更の中身は差分を見る。" > /tmp/body.md
+            body=/tmp/body.md
+          fi
+          gh pr create --base main --head "$BRANCH" \
+            --title "シーズン $MONTH: 型と縛りの札を作り変える" \
+            --body-file "$body"

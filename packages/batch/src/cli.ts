@@ -9,6 +9,7 @@
 //                               次の間隔を待たずに一作品つくって公開する。常駐が動いていれば横から頼む。
 //                               --provider は今回だけ頼む相手を指す（事業者の名前かモデル名）
 //     fanm check <dir>...       work.ts と meta.json のあるディレクトリを検査する（AIは呼ばない）
+//     fanm check --templates    いまのシーズン（templates/season.json）を確かめ、使う型の実例をすべて検査する
 //     fanm overlap              採用作が実例や過去作をどれだけ写しているかを並べる（AIは呼ばない）
 //     fanm status               いまどうなっているか。動いていなければ終了コード 1
 //     fanm budget               今月の使用額
@@ -33,7 +34,8 @@ import { loadConfig, VAR } from "./config.js";
 import { JobStore } from "./jobs/job.js";
 import { make } from "./jobs/make.js";
 import { summary } from "./jobs/summary.js";
-import { FORMS, formOf } from "./plan/forms.js";
+import { activeForms, formOf } from "./plan/forms.js";
+import { season, TEMPLATES } from "./plan/season.js";
 import { template } from "./prompts.js";
 import { deckBrief, deckNamed, FAKE_DECK, verifyDeck } from "./providers/deck.js";
 import { CloudflarePublisher, PublishError, type Publisher } from "./publish/publisher.js";
@@ -105,7 +107,7 @@ async function runMake(): Promise<number> {
     // 手元で一つの型を試すための指定。企画が済んでいないジョブにだけ効く。
     const wanted = flag("form");
     if (wanted) {
-        if (!FORMS.some(f => f.id === wanted)) throw new Error(`型 ${wanted} はない。あるのは ${FORMS.map(f => f.id).join(", ")}`);
+        if (!activeForms().some(f => f.id === wanted)) throw new Error(`型 ${wanted} はない。あるのは ${activeForms().map(f => f.id).join(", ")}`);
         if (job.plan) log.line(`${job.id} は企画済みなので --form は効かない（型は ${job.form}）`);
         else {
             job.form = wanted;
@@ -122,6 +124,7 @@ async function runMake(): Promise<number> {
     } catch (e) {
         if (e instanceof BudgetExceeded) log.line(`月間予算に達したので止める: ${e.message}`);
         else if (e instanceof ProviderError && e.fatal) log.line(`人の対応が必要: ${e.message}`);
+        else if (e instanceof ProviderError && e.kind === "limit") log.line(`定額の枠が尽きていて、ほかに頼める相手がいない: ${e.message}`);
         else throw e;
         return 2;
     } finally {
@@ -311,7 +314,13 @@ switch (command) {
         break;
     case "check": {
         const dirs = args.filter(a => !a.startsWith("--"));
-        if (!dirs.length) throw new Error("usage: fanm check <dir>...");
+        if (args.includes("--templates")) {
+            // シーズンが読めること（型の四つのファイル、札の数）を先に確かめる。壊れていればここで止まる。
+            const now = season();
+            console.log(`シーズン ${now.season}: 型は ${now.forms.map(f => f.id).join(", ")}${now.retired.length ? `（休み: ${now.retired.map(f => f.id).join(", ")}）` : ""}`);
+            dirs.push(...now.forms.map(f => join(TEMPLATES, f.id)));
+        }
+        if (!dirs.length) throw new Error("usage: fanm check <dir>... | fanm check --templates");
         let failed = 0;
         for (const dir of dirs) {
             if (dirs.length > 1) console.log(`\n=== ${dir} ===`);

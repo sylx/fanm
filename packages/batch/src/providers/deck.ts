@@ -8,16 +8,33 @@
 // コードの形が違う。縛りが一つの型の中を散らすのに対して、こちらは型の外側から
 // 散らす。
 //
+// 枠の尽きた相手（定額の CLI）は、戻る時刻まで札束から外す（rest / rested）。
+//
 // 札には share（引かれやすさ）を書ける。単価は相手ごとに10倍ほど違うので、高い
 // 相手は「たまに」にしておける。0 にすると引かれない（消さずに休ませられる）。
 
 import type { ProviderConfig } from "../config.js";
 import { Claude, CLAUDE_API_KEY_ENV, CLAUDE_MODELS } from "./claude.js";
+import { ClaudeCode } from "./claude-code.js";
+import { Codex } from "./codex.js";
 import { DeepSeek, DEEPSEEK_API_KEY_ENV, DEEPSEEK_MODELS } from "./deepseek.js";
 import { FakeProvider } from "./fake.js";
 import { Gemini, GEMINI_API_KEY_ENV, GEMINI_MODELS } from "./gemini.js";
 import { OPENAI_API_KEY_ENV, OPENAI_MODELS, OpenAIProvider } from "./openai.js";
 import type { Provider } from "./provider.js";
+
+/** 休ませている相手。モデル名 → 戻る時刻。常駐が動いている間だけ覚えていれば足りる。 */
+const resting = new Map<string, number>();
+
+/** 枠の尽きた相手を `until` まで休ませる。 */
+export function rest(model: string, until: Date): void {
+    resting.set(model, until.getTime());
+}
+
+/** 休んでいる相手を除いた札束。全員が休んでいれば空。 */
+export function rested(deck: readonly ProviderConfig[], now = Date.now()): readonly ProviderConfig[] {
+    return deck.filter(e => (resting.get(e.model) ?? 0) <= now);
+}
 
 /** 偽のAIだけの札束。--fake のときは設定の札束を使わない。 */
 export const FAKE_DECK: readonly ProviderConfig[] = [{ name: "fake", model: "fake" }];
@@ -76,14 +93,19 @@ const VENDORS = {
  * （scripts/conf-push.sh）。verifyDeck は鍵も見るが、そちらは動かす側の話。
  */
 export function unknownModels(deck: readonly ProviderConfig[]): string[] {
+    // 定額の CLI には単価が無い。モデル名が通るかは、相手の契約しだいなので呼ぶまで分からない。
     const known = (entry: ProviderConfig) =>
-        entry.name === "fake" || VENDORS[entry.name].models.includes(entry.model);
+        entry.name === "fake" || entry.name === "claude-code" || entry.name === "codex"
+        || VENDORS[entry.name].models.includes(entry.model);
     return deck.filter(e => !known(e)).map(e => `${e.name} / ${e.model}`);
 }
 
 /** 札を実際の接続にする。鍵が無ければここで止まる。 */
 export function createProvider(entry: ProviderConfig): Provider {
     if (entry.name === "fake") return new FakeProvider(entry.model);
+    // 定額の CLI。鍵は CLI が自分で持っている（トークンの環境変数か、ログイン済みの置き場所）。
+    if (entry.name === "claude-code") return new ClaudeCode(entry.model);
+    if (entry.name === "codex") return new Codex(entry.model);
     const env = entry.apiKeyEnv ?? VENDORS[entry.name].env;
     const key = process.env[env];
     if (!key) throw new Error(`環境変数 ${env} に APIキーがない（${entry.name} ${entry.model}）`);

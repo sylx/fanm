@@ -5,32 +5,27 @@
 // 「光る点が流れていく」ものに寄る。AIに選ばせても同じところへ戻る。だから
 // 過去作に少ない型を先に当て、同じ数のものが並んだらその中から乱択する。
 //
-// 型を増やすには templates/<id>/ を作り、ここに一行足す。
+// 型の一覧はコードではなく templates/season.json にある（plan/season.ts）。
+// 型を増やすには templates/<id>/ を作り、season.json の forms に一行足す。
+// 新しい型は直近に一作も無いので、入れた直後はその型が続けて当たる。
 
 import type { Plan } from "./planner.js";
+import { season, type Form } from "./season.js";
 
-export interface Form {
-    /** templates/<id>/ の名前であり、企画に残る名前。 */
-    readonly id: string;
-    /** 過去作品の一覧に出す短い名前。 */
-    readonly label: string;
+export type { Form };
+
+/** いま引く型（templates/season.json の forms）。 */
+export function activeForms(): readonly Form[] {
+    return season().forms;
 }
 
-export const FORMS: readonly Form[] = [
-    { id: "ambient", label: "環境デモ" },
-    { id: "game", label: "ゲーム" },
-    { id: "poem", label: "詩" },
-    { id: "adventure", label: "アドベンチャー" },
-    { id: "rpg", label: "RPG" },
-    { id: "action", label: "横スクロールアクション" },
-    { id: "shooter", label: "縦スクロールシューティング" },
-    { id: "tiles", label: "キャラクタ画面" }
-];
-
-export const DEFAULT_FORM = FORMS[0];
-
+/**
+ * 名前から型を引く。休ませた型も引ける（過去作の型として名前を出すため）。
+ * 型を記録する前の作品と、もう一覧に無い型は、最初の型として扱う。
+ */
 export function formOf(id: string | undefined): Form {
-    return FORMS.find(f => f.id === id) ?? DEFAULT_FORM;
+    const { forms, retired } = season();
+    return forms.find(f => f.id === id) ?? retired.find(f => f.id === id) ?? forms[0];
 }
 
 /**
@@ -39,14 +34,18 @@ export function formOf(id: string | undefined): Form {
  * 数えるのは直近 `window` 作まで。ずっと昔まで数えると、一度偏った分を
  * いつまでも取り返そうとして、こんどは逆に偏る。
  */
-export function pickForm(past: readonly Plan[], random: () => number, window = FORMS.length * 3): Form {
-    const recent = past.slice(0, window);
-    const counts = new Map(FORMS.map(form => [form.id, 0]));
-    for (const plan of recent) {
-        const id = formOf(plan.form).id;
-        counts.set(id, (counts.get(id) ?? 0) + 1);
+export function pickForm(
+    past: readonly Plan[],
+    random: () => number,
+    forms: readonly Form[] = activeForms(),
+    window = forms.length * 3
+): Form {
+    const counts = new Map(forms.map(form => [form.id, 0]));
+    // 休ませた型の過去作は数えない。数えると、いまの型のどれとも並ばない数が混じる。
+    for (const plan of past.slice(0, window)) {
+        if (plan.form && counts.has(plan.form)) counts.set(plan.form, counts.get(plan.form)! + 1);
     }
     const fewest = Math.min(...counts.values());
-    const candidates = FORMS.filter(form => counts.get(form.id) === fewest);
-    return candidates[Math.floor(random() * candidates.length)] ?? DEFAULT_FORM;
+    const candidates = forms.filter(form => counts.get(form.id) === fewest);
+    return candidates[Math.floor(random() * candidates.length)] ?? forms[0];
 }
