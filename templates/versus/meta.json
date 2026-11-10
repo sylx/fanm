@@ -1,0 +1,6 @@
+{
+  "title": "TRACE DUEL",
+  "description": "二台が盤の上を走り、通った跡がそのまま壁になる。先に壁へ突っ込んだほうが負けで、三本先取。誰も触らなければ機械どうしが戦う。",
+  "controls": "1P 矢印キー / 2P WASD で向きを変える",
+  "durationFrames": 2700
+}
