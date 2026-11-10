@@ -325,8 +325,14 @@ export async function runLoop(options: LoopOptions): Promise<number> {
                 ...(shown.length === 1 ? { image: thumb } : { thumbnail: thumb })
             };
         });
+        // Discord で返信すると引用されるのはこの一行だけなので、どの作品かがここで分かるように題と作者を書く。
+        const names = shown.map(id => {
+            const meta = archive.meta(id);
+            const by = `${meta.penName ?? ""}${meta.model ? `（${meta.model}）` : ""}`;
+            return `「${meta.title}${by ? ` ${by}` : ""}」`;
+        });
         const rest = ids.length - shown.length;
-        await notifier.say(`新しい作品が出た（${ids.length}件）${rest ? `。うち新しい ${shown.length} 件` : ""}`, embeds);
+        await notifier.say(`新作${names.join("、")}${rest ? `ほか ${rest} 件` : ""}が公開された`, embeds);
     }
 
     /** 公開物を組み立てて送る。送れたら true。 */
