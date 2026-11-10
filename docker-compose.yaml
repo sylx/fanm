@@ -15,8 +15,8 @@ services:
       - FANM_CONFIG=/data/fanm.json
       # AIのAPIキー。設定した事業者のものが無いと起動しない。
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+#      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+#      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       # 定額の契約で使う相手（札束の claude-code / codex）。API キーとは別。
       # Claude は手元で `claude setup-token` を実行して出てきたトークンを入れる。
