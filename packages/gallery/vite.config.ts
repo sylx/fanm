@@ -60,12 +60,38 @@ function socialPreview(): Plugin {
     };
 }
 
+/**
+ * Cloudflare Web Analytics の計測タグ。Cookie を置かず、訪問者を見分ける値も残さない
+ * ので、同意の確認（Cookie バナー）は出さない。目録（index.html）にだけ入れる。プレイヤー
+ * （play.html）は目録の iframe の中で開くので、入れると一回の訪問を二重に数える。
+ * 作品ページ（/work/<id>/）は Worker が目録の HTML から作るので、そのまま入る。
+ * pushState での移動も、タグが自分で拾ってページビューにする。
+ *
+ * トークンは秘密ではない（ページにそのまま載る）。Cloudflare のダッシュボードの
+ * Web Analytics でサイトを足すときに、JS スニペットの方式を選ぶと出てくる。
+ * 自動で差し込む方式を選ぶと、ここのタグと二重になる。空なら入れない。
+ */
+const WEB_ANALYTICS_TOKEN = "d8ea3305d807495caf327d9292401495";
+
+function webAnalytics(): Plugin {
+    return {
+        name: "fanm-web-analytics",
+        apply: "build",
+        transformIndexHtml(html, ctx) {
+            if (!WEB_ANALYTICS_TOKEN || !ctx.path.endsWith("/index.html")) return;
+            // 属性の値に JSON の " が入るので、Vite のタグ組み立て（" を \" と書く）を通さず自分で書く。
+            const beacon = JSON.stringify({ token: WEB_ANALYTICS_TOKEN }).replace(/"/g, "&quot;");
+            return html.replace("</body>", () => `<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon="${beacon}"></script>\n</body>`);
+        }
+    };
+}
+
 export default defineConfig({
     base: "/",
     // 作品が日本語を出すためのドット面（JF Dot K12x10）。エンジンに同梱された
     // ものをそのまま配る。写しを持たないので、エンジンを更新すれば追従する。
     publicDir: root("engine/fantasy-msx/public"),
-    plugins: [galleryDev(root("")), socialPreview()],
+    plugins: [galleryDev(root("")), socialPreview(), webAnalytics()],
     resolve: {
         alias: [
             { find: /^fantasy-msx$/, replacement: root("engine/fantasy-msx/src/index.ts") },

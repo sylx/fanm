@@ -93,6 +93,8 @@ function App() {
     const stage = useRef<HTMLElement>(null);
     const gallery = useRef<HTMLElement>(null);
     const focusPlayer = useRef(true);
+    // いま出ている作品が、ランダム再生で自動的に回ってきたものか。再生回数の内訳に使う。
+    const autoPlayed = useRef(false);
     const returnScroll = useRef(0);
     const restore = useRef<{ y: number; focus?: string } | null>(null);
     const params = new URLSearchParams(route.search);
@@ -109,9 +111,12 @@ function App() {
     const visible = useMemo(() => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [filtered, page]);
     const months = useMemo(() => [...new Set(index?.items.map(item => item.createdAt.slice(0, 7)))], [index]);
     const selectedAt = index?.items.findIndex(item => item.id === route.id) ?? -1;
+    // 作品が替わったときにだけ決める。あとで変わると iframe が読み直されてしまう。
+    const via = useMemo(() => autoPlayed.current ? "auto" : "pick", [work?.id]);
 
     function navigate(id: string | null, options: { auto?: boolean; search?: string; restore?: boolean; replace?: boolean } = {}) {
         const auto = options.auto ?? false;
+        if (id !== route.id) autoPlayed.current = auto;
         if (!auto) setShuffle(false);
         focusPlayer.current = !auto || document.activeElement === frame.current;
         const search = options.search ?? route.search;
@@ -154,6 +159,7 @@ function App() {
         const onPop = () => {
             setShuffle(false);
             focusPlayer.current = false;
+            autoPlayed.current = false;
             returnScroll.current = history.state?.returnScroll ?? 0;
             restore.current = { y: history.state?.scroll ?? 0, focus: history.state?.returnId };
             const next = readRoute();
@@ -303,7 +309,7 @@ function App() {
             </div>
             {workError ? <p className="error" role="alert">{workError} <button onClick={() => setRetry(value => value + 1)}>再読み込み</button></p> : work ? <>
                 {work.controls && <p className="status">操作：{work.controls}</p>}
-                <iframe key={work.id} ref={frame} title={work.title} allow="autoplay" src={`/play.html?work=${encodeURIComponent(work.id)}`} onLoad={() => {
+                <iframe key={work.id} ref={frame} title={work.title} allow="autoplay" src={`/play.html?work=${encodeURIComponent(work.id)}&via=${via}`} onLoad={() => {
                     if (focusPlayer.current) frame.current?.contentWindow?.focus();
                     frame.current?.contentWindow?.postMessage({ fanm: "audio" }, location.origin);
                     sendVolume();

@@ -4,12 +4,40 @@ import { renderWork } from "./render.js";
 export interface Env {
     ASSETS: { fetch(request: Request): Promise<Response> };
     VERSION?: { id: string };
+    /** 作品ごとの再生回数（Workers Analytics Engine）。開発サーバーとテストには無く、そのときは数えない。 */
+    PLAYS?: { writeDataPoint(point: { blobs?: string[]; doubles?: number[]; indexes?: string[] }): void };
+}
+
+/** 再生がどこから来たか。目録で選んだ、ランダム再生で回ってきた、プレイヤーを直接開いた。 */
+const VIA = new Set(["pick", "auto", "direct"]);
+
+/**
+ * プレイヤーが作品を動かし始めたときに送ってくる知らせを数える。
+ *
+ * 目録から作品へは pushState で移るので、/work/ の HTML は直接開かれたときにしか
+ * Worker を通らない。だから数えるのはプレイヤーの側からの知らせにする。
+ *
+ * 残すのは作品、経路、国だけ。IP、User-Agent、Cookie のような、人を見分けられる
+ * ものは受け取らず、残さない。知らない作品は数えない（目録を汚させない）。
+ */
+async function countPlay(request: Request, url: URL, env: Env): Promise<Response> {
+    if (request.method !== "POST") return new Response("Method not allowed", { status: 405, headers: { Allow: "POST" } });
+    const id = url.searchParams.get("work") ?? "";
+    const via = url.searchParams.get("via") ?? "";
+    if (!/^[a-zA-Z0-9_-]+$/.test(id) || !VIA.has(via)) return new Response("Bad request", { status: 400 });
+    const meta = await env.ASSETS.fetch(new Request(new URL(`/works/${id}/meta.json`, url.origin)));
+    if (!meta.ok) return new Response("Not found", { status: 404 });
+    const country = (request as Request & { cf?: { country?: string } }).cf?.country ?? "";
+    env.PLAYS?.writeDataPoint({ indexes: [id], blobs: [id, via, country], doubles: [1] });
+    return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
 }
 interface Context { waitUntil(promise: Promise<unknown>): void }
 
 /** Web 標準だけに依存し、開発サーバーからも同じハンドラを実行する。 */
 export async function handle(request: Request, env: Env, context?: Context): Promise<Response> {
     const url = new URL(request.url);
+    if (url.pathname === "/api/play") return countPlay(request, url, env);
+    if (url.pathname.startsWith("/api/")) return new Response("Not found", { status: 404 });
     if (!url.pathname.startsWith("/work/")) return env.ASSETS.fetch(request);
     if (request.method !== "GET" && request.method !== "HEAD") return new Response("Method not allowed", { status: 405, headers: { Allow: "GET, HEAD" } });
     const match = /^\/work\/([a-zA-Z0-9_-]+)\/?$/.exec(url.pathname);

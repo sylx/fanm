@@ -140,6 +140,12 @@ if (!found) {
     throw new Error(`作品 ${id} が見つからない`);
 }
 
+// 再生を一回と数えてもらう（作品ごとの再生回数）。Cookie も、人を見分ける値も送らない。
+// 目録の iframe の中なら、選んだのかランダム再生で回ってきたのかを目録が ?via= で渡す。
+// ここは読み込みごとに一度しか通らないので、CRT の入れ切りで数え直すことはない。
+const via = window.top !== window.self ? (params.get("via") === "auto" ? "auto" : "pick") : "direct";
+navigator.sendBeacon?.(`/api/play?work=${encodeURIComponent(id)}&via=${via}`);
+
 await loadDotFont();
 
 const seed = params.has("seed") ? Number(params.get("seed")) : found.seed;

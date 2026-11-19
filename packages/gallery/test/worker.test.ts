@@ -105,3 +105,28 @@ test("作者のペンネームは作品HTMLと索引に載り、無い作品で�
     assert.ok(renderWork(shell, entry).includes('<p id="work-author" hidden></p>'));
     assert.equal(catalogFiles([authored]).index.items[0].penName, "Golden<Snail>");
 });
+
+test("再生の知らせは知っている作品だけを、作品・経路・国だけで数える", async () => {
+    const points: { blobs?: string[]; doubles?: number[]; indexes?: string[] }[] = [];
+    const env = {
+        ASSETS: { async fetch(request: Request) {
+            return new URL(request.url).pathname === "/works/sample/meta.json" ? Response.json(entry) : new Response(null, { status: 404 });
+        } },
+        PLAYS: { writeDataPoint(point: (typeof points)[number]) { points.push(point); } }
+    };
+    const play = (query: string, method = "POST") => {
+        const request = new Request(`https://example.test/api/play?${query}`, { method, headers: { "User-Agent": "test", "CF-Connecting-IP": "203.0.113.1" } });
+        Object.defineProperty(request, "cf", { value: { country: "JP" } });
+        return handle(request, env);
+    };
+    assert.equal((await play("work=sample&via=pick")).status, 204);
+    assert.deepEqual(points, [{ indexes: ["sample"], blobs: ["sample", "pick", "JP"], doubles: [1] }]);
+    assert.equal((await play("work=sample&via=pick", "GET")).status, 405);
+    assert.equal((await play("work=missing&via=pick")).status, 404);
+    assert.equal((await play("work=../x&via=pick")).status, 400);
+    assert.equal((await play("work=sample&via=other")).status, 400);
+    assert.equal((await handle(new Request("https://example.test/api/other", { method: "POST" }), env)).status, 404);
+    assert.equal(points.length, 1);
+    // 開発サーバーには数える先が無い。それでも知らせは受け取って捨てる。
+    assert.equal((await handle(new Request("https://example.test/api/play?work=sample&via=auto", { method: "POST" }), { ASSETS: env.ASSETS })).status, 204);
+});

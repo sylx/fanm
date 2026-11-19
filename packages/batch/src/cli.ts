@@ -13,6 +13,7 @@
 //     fanm overlap              採用作が実例や過去作をどれだけ写しているかを並べる（AIは呼ばない）
 //     fanm status               いまどうなっているか。動いていなければ終了コード 1
 //     fanm budget               今月の使用額
+//     fanm plays [--days <n>]   作品ごとの再生回数（既定は 30 日。Analytics Engine から引く）
 //     fanm publish [--local]    採用作から公開物を組み立て（<VAR>/site/）、Cloudflare へ送る
 //                               --local は組み立てるところまで。偽のAIの作品も送らない
 //     fanm remove <id>... [--local]
@@ -38,6 +39,7 @@ import { activeForms, formOf } from "./plan/forms.js";
 import { season, TEMPLATES } from "./plan/season.js";
 import { template } from "./prompts.js";
 import { deckBrief, deckNamed, FAKE_DECK, verifyDeck } from "./providers/deck.js";
+import { fetchPlays } from "./publish/plays.js";
 import { CloudflarePublisher, PublishError, type Publisher } from "./publish/publisher.js";
 import { assemble } from "./publish/site.js";
 import { acquire, isRunning } from "./run/lock.js";
@@ -351,7 +353,21 @@ switch (command) {
         console.log(`  実行中 $${sum("reserved").toFixed(4)}（${entries.filter(e => e.status === "reserved").length}件）`);
         break;
     }
+    case "plays": {
+        const at = args.indexOf("--days");
+        const days = at >= 0 ? Number(args[at + 1]) : 30;
+        const plays = await fetchPlays(days);
+        const archive = new Archive(join(root, "works"));
+        const known = new Set(archive.ids());
+        const sum = (key: "total" | "pick" | "auto" | "direct") => plays.reduce((n, p) => n + p[key], 0);
+        console.log(`直近 ${days} 日の再生 ${sum("total")} 回（選んで ${sum("pick")}、ランダム再生 ${sum("auto")}、直接 ${sum("direct")}）`);
+        for (const p of plays) {
+            const title = known.has(p.work) ? archive.meta(p.work).title : "（作品庫にない）";
+            console.log(`${String(p.total).padStart(6)}  ${String(p.pick).padStart(5)} / ${String(p.auto).padStart(5)} / ${String(p.direct).padStart(5)}  ${p.work}  ${title}`);
+        }
+        break;
+    }
     default:
-        console.error("usage: fanm run [--once] | make [--fake] [--form <型>] | makenow [--local] [--provider <名前>] | check <dir> | overlap | status | publish [--local] | remove <id>... [--local] | budget");
+        console.error("usage: fanm run [--once] | make [--fake] [--form <型>] | makenow [--local] [--provider <名前>] | check <dir> | overlap | status | publish [--local] | remove <id>... [--local] | budget | plays [--days <n>]");
         process.exitCode = 2;
 }

@@ -11,10 +11,14 @@
     "main": "packages/gallery/worker/index.ts",
     "assets": {
         "binding": "ASSETS",
-        "run_worker_first": ["/work/*"],
+        "run_worker_first": ["/work/*", "/api/*"],
         "not_found_handling": "none"
     },
     "version_metadata": { "binding": "VERSION" },
+    // 作品ごとの再生回数。データセットは最初に書いたときにできる。見るのは fanm plays。
+    "analytics_engine_datasets": [
+        { "binding": "PLAYS", "dataset": "fanm_plays" }
+    ],
     "compatibility_date": "2026-09-20",
 
     // 公開するのはこのドメインだけ。workers.dev の名前と版ごとのプレビューURLは出さない。

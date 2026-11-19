@@ -30,7 +30,7 @@ export function galleryDev(root: string): Plugin {
             });
             server.middlewares.use(async (req, res, next) => {
                 const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
-                if (!url.pathname.startsWith("/work/") && !url.pathname.startsWith("/works/")) return next();
+                if (!url.pathname.startsWith("/work/") && !url.pathname.startsWith("/works/") && !url.pathname.startsWith("/api/")) return next();
                 try {
                     const request = new Request(url, { method: req.method });
                     const assets = {
