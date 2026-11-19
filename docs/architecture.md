@@ -22,6 +22,7 @@ fanM/
 │  │     ├─ providers/     AI事業者への接続（依存はここに閉じ込める）
 │  │     ├─ plan/          企画
 │  │     ├─ generate/      生成と修正
+│  │     ├─ paint/         描く段（D部門）。描き手に絵を描かせ、縮めて作品の images/ に置く
 │  │     ├─ check/         ビルド・実行・撮影・検査
 │  │     ├─ archive/       作品庫（公開分と非公開の記録を分ける）
 │  │     └─ publish/       公開先への接続
@@ -103,6 +104,8 @@ fanM/
   - 静的検査は、画像を同梱した作品にだけ `ctx.image` を許し、`image.load` / `show` / `decode` / `loadPalette` / `decoder` はいつも禁じる。
   - プレイヤーは色の補正を掛けずに読む（`colorSpaceConversion: "none"`）。検査で撮った絵と同じ減色の結果にするため。
   - 作品庫では `public/images/`、公開物では `works/<id>/images/` に置き、`meta.json` の `images` に名前を並べる。
+  - 絵を描くのは `paint/`。描き手（`providers/painter.ts`）はいま Codex だけで、定額の枠で描く（台帳には $0）。`codex exec` の画像生成の道具を使わせ、`CODEX_HOME/generated_images/<thread_id>/` に置かれた PNG を読んだら、そのディレクトリごと消す。届いた絵は 1〜2K 四方なので、512×424 の枠に収まるまで面積平均で縮め、色の補正の情報を持たない PNG に書き直す（`paint/normalize.ts`）。
+  - Gemini も絵を描けるが JPEG で返してくる（PNG の指定は Gemini API では通らない）。読むには JPEG のデコーダを依存に足す必要があり、まだ入れていない。
 - `meta.json` のうち、AI が書くのは `WorkDescription`（タイトル、説明、操作、長さ）。id、日時、エンジンのコミット、書いたモデル名、seed、サムネイルはバッチが足す。モデル名は生成・修正の呼出しの記録から採るので、事業者を増やしても作品ごとにどの頭が書いたか残る（記録を始める前の作品には無い）。
 
 ## 公開物の組み立て（`fanm publish`）
@@ -142,6 +145,7 @@ npm run gallery:dev                 # play.html?work=<id> で手元の作品や�
 npm run make                        # AIで一作品作る（走っている間に叩くと、その様子が見える）
 npm run make -- --form rpg          # 型を指定して作る（手元で一つの型を試すとき。本番は指定しない）
 npm run overlap                     # 採用作が実例や過去作をどれだけ写しているかを並べる
+npm run fanm -- paint "<絵>" --name castle   # 描く段だけを試す（Codex に一枚描かせ、<VAR>/paint/<時刻>/ に縮めた絵・元の絵・G4 の見本）
 npm start                           # 常駐して作り続ける（本番のコンテナが動かすのもこれ）
 npm run status                      # いまどうなっているか（動いていなければ終了コード 1）
 npm run publish                     # 採用作から var/site/ を組み立て、Cloudflare へ送る

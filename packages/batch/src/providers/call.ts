@@ -4,6 +4,7 @@
 // 再試行のたびに予約し直す。
 
 import type { Ledger } from "../budget/ledger.js";
+import type { Painter, Painting, PaintRequest } from "./painter.js";
 import type { Completion, CompletionRequest, OnDelta, Provider } from "./provider.js";
 import { ProviderError } from "./provider.js";
 
@@ -57,6 +58,38 @@ export async function call(
                 ...result,
                 log: { purpose, at: entry.at, model: provider.model, ...usage, truncated: result.truncated }
             };
+        } catch (e) {
+            if (e instanceof ProviderError && e.billed === false) ledger.settle(entry, 0);
+            else ledger.settleUnknown(entry);
+            if (!(e instanceof ProviderError) || !e.retryable || attempt >= RETRY_DELAYS_MS.length) throw e;
+            console.warn(`${purpose}: ${e.message} — ${RETRY_DELAYS_MS[attempt] / 1000}秒後に再試行`);
+            await wait(RETRY_DELAYS_MS[attempt]);
+        }
+    }
+}
+
+/**
+ * 予算を通して絵を描かせる（D部門）。文章の call と同じく、予約 → 呼出し → 精算で、
+ * 一時的な失敗は上限付きで再試行する。描く途中の見積りは無いので progress は書かない。
+ */
+export async function callPainter(
+    painter: Painter,
+    ledger: Ledger,
+    jobId: string,
+    purpose: string,
+    request: PaintRequest,
+    wait: (ms: number) => Promise<void> = ms => new Promise(r => setTimeout(r, ms))
+): Promise<Painting & { log: CallLog }> {
+    for (let attempt = 0; ; ++attempt) {
+        const entry = ledger.reserve(jobId, purpose, painter.estimateMaxUsd(request));
+        try {
+            const result = await painter.paint(request);
+            const { usage } = result;
+            ledger.settle(entry, usage.usd, {
+                input: usage.inputTokens, cached: usage.cachedInputTokens,
+                output: usage.outputTokens, reasoning: usage.reasoningTokens
+            });
+            return { ...result, log: { purpose, at: entry.at, model: painter.model, ...usage, truncated: false } };
         } catch (e) {
             if (e instanceof ProviderError && e.billed === false) ledger.settle(entry, 0);
             else ledger.settleUnknown(entry);

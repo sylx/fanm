@@ -16,6 +16,9 @@
 //     fanm plays [--days <n>]   作品ごとの再生回数（既定は 30 日。Analytics Engine から引く）
 //     fanm publish [--local]    採用作から公開物を組み立て（<VAR>/site/）、Cloudflare へ送る
 //                               --local は組み立てるところまで。偽のAIの作品も送らない
+//     fanm paint "<絵>" [--name <名前>] [--aspect 4:3] [--model <モデル>] [--out <dir>]
+//                               D部門の描く段だけを試す。Codex に一枚描かせ、<out>/images/<名前>.png に
+//                               縮めて置き、届いたままの絵（raw.png）と G4 に落とした見本（g4.png）も書く
 //     fanm remove <id>... [--local]
 //                               作品を取り下げる。<VAR>/removed/ へ移し、組み立て直して送る。
 //                               戻すなら <VAR>/removed/<id> を <VAR>/works/ へ移し返して publish
@@ -25,7 +28,8 @@
 //
 // --fake は APIキーなしで一周させる偽のAIを使う。予算台帳も別（<VAR>/fake/）。
 
-import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { decodePNG } from "fantasy-msx/tools/png.js";
 import { basename, join, resolve } from "node:path";
 import { Archive } from "./archive/archive.js";
 import { BudgetExceeded, Ledger } from "./budget/ledger.js";
@@ -36,6 +40,8 @@ import { loadConfig, VAR } from "./config.js";
 import { JobStore } from "./jobs/job.js";
 import { make } from "./jobs/make.js";
 import { summary } from "./jobs/summary.js";
+import { createPainter, paintPicture } from "./paint/paint.js";
+import { preview } from "./paint/preview.js";
 import { activeForms, formOf } from "./plan/forms.js";
 import { DEPARTMENTS, season, TEMPLATES } from "./plan/season.js";
 import { template } from "./prompts.js";
@@ -50,6 +56,7 @@ import { readState } from "./run/state.js";
 import { status } from "./run/status.js";
 import { follow, Log, logPath } from "./run/log.js";
 import { ProviderError } from "./providers/provider.js";
+import type { Aspect } from "./providers/painter.js";
 
 /** 台帳の生の中身。内訳を見せるためだけに読む。 */
 function readLedger(varDir: string): { status: string; usd?: number; maxUsd: number }[] {
@@ -184,6 +191,39 @@ async function runMakeNow(local: boolean): Promise<number> {
         console.log("頼みを受け取る常駐がいなかった。ここで作る。");
     }
     return await runLoop({ config, root, fake, deck: fixedDeck, publisher: publisher(local), once: true, provider });
+}
+
+/** 値を取る旗。これらの次の語は、旗の値であって位置引数ではない。 */
+const VALUED = new Set(["--name", "--aspect", "--model", "--out", "--provider", "--form", "--days"]);
+
+/** 旗とその値を除いた引数。 */
+function positional(): string[] {
+    return args.filter((a, i) => !a.startsWith("--") && !VALUED.has(args[i - 1] ?? ""));
+}
+
+const ASPECTS: readonly Aspect[] = ["4:3", "1:1", "3:4", "16:9"];
+
+/** 描く段だけを試す。本番のコンテナで、Codex が描けるか・どこに置くかを確かめるのにも使う。 */
+async function runPaint(): Promise<number> {
+    const prompt = positional().join(" ").trim();
+    if (!prompt) throw new Error('usage: fanm paint "<絵>" [--name <名前>] [--aspect 4:3] [--model <モデル>] [--out <dir>]');
+    const aspect = (flag("aspect") ?? "4:3") as Aspect;
+    if (!ASPECTS.includes(aspect)) throw new Error(`--aspect は ${ASPECTS.join(" / ")} のどれか`);
+    const stamp = new Date().toISOString().slice(0, 19).replaceAll(/[-:]/g, "");
+    const out = resolve(flag("out") ?? join(root, "paint", stamp));
+    const name = flag("name") ?? "picture";
+    const painter = createPainter({ name: "codex", model: flag("model") ?? "default" });
+
+    console.log(`${painter.name}（${painter.model}）に描かせる: ${prompt}`);
+    const painted = await paintPicture(painter, ledger(), `paint-${stamp}`, { name, prompt, aspect }, out);
+    writeFileSync(join(out, "raw.png"), painted.raw);
+    writeFileSync(join(out, "g4.png"), preview(decodePNG(new Uint8Array(readFileSync(painted.path)))));
+    console.log(`${painted.seconds.toFixed(0)}秒、${painted.source.width}x${painted.source.height} を ${painted.width}x${painted.height} に縮めた`
+        + `（入力 ${painted.log.inputTokens} / 出力 ${painted.log.outputTokens} トークン、$${painted.log.usd}）`);
+    console.log(`置いた絵: ${painted.path}`);
+    console.log(`届いたまま: ${join(out, "raw.png")}`);
+    console.log(`G4 の見本: ${join(out, "g4.png")}`);
+    return 0;
 }
 
 async function runCheck(dir: string): Promise<number> {
@@ -349,6 +389,9 @@ switch (command) {
         process.exitCode = await runRemove(ids, args.includes("--local"));
         break;
     }
+    case "paint":
+        process.exitCode = await runPaint();
+        break;
     case "budget": {
         const entries = readLedger(root);
         const sum = (status: string) => entries.filter(e => e.status === status)
@@ -374,6 +417,6 @@ switch (command) {
         break;
     }
     default:
-        console.error("usage: fanm run [--once] | make [--fake] [--form <型>] | makenow [--local] [--provider <名前>] | check <dir> | overlap | status | publish [--local] | remove <id>... [--local] | budget | plays [--days <n>]");
+        console.error("usage: fanm run [--once] | make [--fake] [--form <型>] | makenow [--local] [--provider <名前>] | check <dir> | overlap | status | publish [--local] | remove <id>... [--local] | paint <絵> | budget | plays [--days <n>]");
         process.exitCode = 2;
 }
