@@ -60,6 +60,8 @@ export interface LoopOptions {
     readonly once?: boolean;
     /** 今回だけ頼む相手を指す（makenow --provider）。事業者の名前かモデル名。 */
     readonly provider?: string;
+    /** 今回だけ作る型を指す（makenow --form）。型か部門の名前。 */
+    readonly form?: string;
 }
 
 const sleep = (ms: number) => new Promise(done => setTimeout(done, ms));
@@ -185,7 +187,7 @@ export async function runLoop(options: LoopOptions): Promise<number> {
                 setPhase("making");
                 // 始めた時刻を先に書く。作っている途中で落ちても、次の間隔はここから数える。
                 store.change(s => { s.lastAttemptAt = new Date().toISOString(); });
-                await makeOne(asked?.provider ?? options.provider);
+                await makeOne(asked?.provider ?? options.provider, asked?.form ?? options.form);
             }
 
             // 送っていない採用作があれば、すぐ送る。送れなかったら間を置いて送り直す。
@@ -230,10 +232,19 @@ export async function runLoop(options: LoopOptions): Promise<number> {
 
     /**
      * 一作品つくる。中断していたジョブがあればその続きから。
-     * 相手を指されていれば、その札だけの札束から引かせる。
+     * 相手を指されていれば、その札だけの札束から引かせる。型を指されていれば、
+     * 企画がまだのジョブにだけ当てる（企画済みなら、その型のまま続ける）。
      */
-    async function makeOne(wanted?: string): Promise<void> {
+    async function makeOne(wanted?: string, form?: string): Promise<void> {
         const job = jobs.unfinished()[0] ?? jobs.create();
+        if (form) {
+            if (job.plan) log.line(`${job.id} は企画済みなので、型の指定 ${form} は効かない（型は ${job.form}）`);
+            else {
+                job.form = form;
+                jobs.save(job);
+                log.line(`${job.id}: 型を ${form} に指定された`);
+            }
+        }
         let hand = deck;
         if (wanted) {
             const only = deckNamed(deck, wanted);

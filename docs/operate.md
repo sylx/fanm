@@ -40,16 +40,20 @@ npm run makenow                 # 手元で。つくって Cloudflare まで
 npm run makenow -- --local      # 送らずに var/site へ組み立てるだけ
 npm run makenow -- --provider claude          # 今回は Claude に頼む
 npm run makenow -- --provider claude-opus-5-5 # モデル名でも指せる
+npm run makenow -- --form d                   # 今回は D部門（一枚絵）を作る
+npm run makenow -- --form d --provider codex  # 型と相手を両方指す
 docker exec -it <container> node_modules/.bin/tsx packages/batch/src/cli.ts makenow
 ```
 
 `--provider` は今回だけ相手を指す（[札束](#頼む相手を変える混ぜる)からふだんどおり引かせない）。事業者の名前で指すと、その事業者の札が複数あればその中から引く。札束にいない相手を指すと、頼む前にその場で止まる。常駐に頼むときも指定は一緒に渡る。試したい相手が `share` を絞られていても、これなら待たずに一作品出せる。
 
+`--form` は今回だけ作る型を指す。シーズンの型でも部門でもよく、`--form d` なら D部門（一枚絵）になる。`departments.d.share` が 0 のままでも作れるので、割合を上げる前に本番で一作品試すのにも使う。いまの型と部門に無い名前を指すと、頼む前にその場で止まる。常駐に頼むときも一緒に渡る。中断していたジョブが企画まで済んでいたら、そのジョブの型のまま続け、指定は効かない（ログに出る）。
+
 常駐が動いているかどうかで、することが変わる。
 
 | 常駐 | `makenow` がすること |
 | --- | --- |
-| 動いている | `<VAR>/now` に頼み（時刻と、指定したなら相手）を置いて「いま作れ」と頼む。常駐が次に目を覚ましたとき（30秒以内）に受け取り、間隔を飛ばして作って送る。頼んだ側はログを映し、終わったら戻る |
+| 動いている | `<VAR>/now` に頼み（時刻と、指定したなら相手と型）を置いて「いま作れ」と頼む。常駐が次に目を覚ましたとき（30秒以内）に受け取り、間隔を飛ばして作って送る。頼んだ側はログを映し、終わったら戻る |
 | 動いていない | その場で自分が一作品つくって公開する（`fanm run --once` と同じ） |
 
 頼みを覚え書き（`run.json`）ではなく別のファイルにしてあるのには理由がある。常駐は覚え書きをメモリに持ったまま30秒ごとに書き戻すので、外から `run.json` の「最後に作った時刻」を直しても、上書きされて消える。読むだけのファイルなら、動いている最中でも横から渡せる。
@@ -356,7 +360,7 @@ OpenAI はこの使い方を「信頼できる私的な自動化」向けの上�
 scripts/fanm-shell.sh fanm paint "Pixel art of a lighthouse in a storm" --name test
 ```
 
-`/data/paint/<時刻>/` に縮めた絵（`images/test.png`）、届いたままの絵（`raw.png`）、G4 に落とした見本（`g4.png`）ができれば描ける。手元で一作品を通すなら `npm run make -- --form d`。
+`/data/paint/<時刻>/` に縮めた絵（`images/test.png`）、届いたままの絵（`raw.png`）、G4 に落とした見本（`g4.png`）ができれば描ける。割合を上げる前に一作品作って公開まで通すなら `scripts/fanm-shell.sh fanm makenow --form d`（手元なら `npm run makenow -- --form d`）。
 
 ## コンテナ
 

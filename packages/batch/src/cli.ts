@@ -6,9 +6,10 @@
 //                               ジョブを一つ最後まで進める。途中のジョブがあればその続きから。
 //                               --form は型を指定する（手元で一つの型を試すとき用。本番は指定しない）。
 //                               部門も指せる（--form d で D部門の一枚絵）
-//     fanm makenow [--local] [--provider <名前>]
+//     fanm makenow [--local] [--provider <名前>] [--form <型>]
 //                               次の間隔を待たずに一作品つくって公開する。常駐が動いていれば横から頼む。
-//                               --provider は今回だけ頼む相手を指す（事業者の名前かモデル名）
+//                               --provider は今回だけ頼む相手を指す（事業者の名前かモデル名）。
+//                               --form は今回だけ作る型を指す（--form d で D部門の一枚絵）
 //     fanm check <dir>...       work.ts と meta.json のあるディレクトリを検査する（AIは呼ばない）
 //     fanm check --templates    いまのシーズン（templates/season.json）を確かめ、使う型の実例をすべて検査する
 //     fanm overlap              採用作が実例や過去作をどれだけ写しているかを並べる（AIは呼ばない）
@@ -96,6 +97,15 @@ function wantedProvider(): string | undefined {
     return wanted;
 }
 
+/** `--form` の指定。いまの型か部門でなければ、頼む前にここで止める。 */
+function wantedForm(): string | undefined {
+    const wanted = flag("form");
+    if (!wanted) return undefined;
+    const known = [...activeForms(), ...departments().forms].map(f => f.id);
+    if (!known.includes(wanted)) throw new Error(`型 ${wanted} はない。あるのは ${known.join(", ")}`);
+    return wanted;
+}
+
 async function runMake(): Promise<number> {
     mkdirSync(root, { recursive: true });
     const lock = acquire(root);
@@ -116,10 +126,8 @@ async function runMake(): Promise<number> {
     const jobs = new JobStore(join(root, "jobs"));
     const job = jobs.unfinished()[0] ?? jobs.create();
     // 手元で一つの型を試すための指定。企画が済んでいないジョブにだけ効く。
-    const wanted = flag("form");
+    const wanted = wantedForm();
     if (wanted) {
-        const known = [...activeForms(), ...departments().forms].map(f => f.id);
-        if (!known.includes(wanted)) throw new Error(`型 ${wanted} はない。あるのは ${known.join(", ")}`);
         if (job.plan) log.line(`${job.id} は企画済みなので --form は効かない（型は ${job.form}）`);
         else {
             job.form = wanted;
@@ -175,13 +183,15 @@ async function watchRequest(): Promise<string> {
 async function runMakeNow(local: boolean): Promise<number> {
     mkdirSync(root, { recursive: true });
     const provider = wantedProvider();
+    const form = wantedForm();
     const running = isRunning(root);
     if (running) {
         if (readState(root).beat?.phase === "making") {
             console.log("いま別の作品を作っている。それが終わってから、続けてもう一作品つくる。");
         }
-        askNow(root, { provider });
-        console.log(`常駐（pid ${running.pid}）に「いま作れ」と頼んだ${provider ? `（相手は ${provider}）` : ""}。30秒以内に始まる。Ctrl-C で見るのをやめても、制作は続く。`);
+        askNow(root, { provider, form });
+        const wish = [provider && `相手は ${provider}`, form && `型は ${form}`].filter(Boolean).join("、");
+        console.log(`常駐（pid ${running.pid}）に「いま作れ」と頼んだ${wish ? `（${wish}）` : ""}。30秒以内に始まる。Ctrl-C で見るのをやめても、制作は続く。`);
         const phase = await watchRequest();
         if (asked(root) === null) {
             if (phase !== "paused") return 0;
@@ -192,7 +202,7 @@ async function runMakeNow(local: boolean): Promise<number> {
         takeRequest(root);
         console.log("頼みを受け取る常駐がいなかった。ここで作る。");
     }
-    return await runLoop({ config, root, fake, deck: fixedDeck, publisher: publisher(local), once: true, provider });
+    return await runLoop({ config, root, fake, deck: fixedDeck, publisher: publisher(local), once: true, provider, form });
 }
 
 /** 値を取る旗。これらの次の語は、旗の値であって位置引数ではない。 */
@@ -419,6 +429,6 @@ switch (command) {
         break;
     }
     default:
-        console.error("usage: fanm run [--once] | make [--fake] [--form <型>] | makenow [--local] [--provider <名前>] | check <dir> | overlap | status | publish [--local] | remove <id>... [--local] | paint <絵> | budget | plays [--days <n>]");
+        console.error("usage: fanm run [--once] | make [--fake] [--form <型>] | makenow [--local] [--provider <名前>] [--form <型>] | check <dir> | overlap | status | publish [--local] | remove <id>... [--local] | paint <絵> | budget | plays [--days <n>]");
         process.exitCode = 2;
 }

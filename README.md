@@ -200,6 +200,7 @@ npm run start:fake -- --once  # 偽のAIで制作の輪を一周（企画から�
 npm start                     # 常駐して作り続ける。本番（Coolify）が動かすのもこれ
 npm run makenow               # 次の間隔を待たずに一作品つくって公開する
 npm run makenow -- --provider claude   # 相手を指して一作品（札束から引かせない）
+npm run makenow -- --form d   # D部門（一枚絵）を一作品。割合が 0 のままでも作れる
 npm run status                # いまどうなっているか
 npm run overlap               # 採用作が実例や過去作をどれだけ写しているか
 npm run make -- --form rpg    # 型を指定して一作品作る（手元で一つの型を試すとき）

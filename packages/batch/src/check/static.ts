@@ -12,7 +12,9 @@ const FORBIDDEN: readonly [RegExp, string][] = [
     [/\b(eval|Function)\s*\(/, "eval / Function は使わない"],
     [/\bimport\s*\(/, "動的 import は使わない"],
     [/\brequire\s*\(/, "require は使わない"],
-    [/\b(process|globalThis|window|document|self|navigator|localStorage|sessionStorage|indexedDB)\b/, "ホストの環境には触れない"],
+    // 自前のオブジェクトのキー（{ window: 0.5 }）とプロパティ（view.window）は名前が同じだけなので咎めない。
+    // 三項演算子（a ? window : b）の : はキーではないので、? の後ろなら咎める。
+    [/(?<![.\w$])(?:(?<=\?\s*)\b(?:process|globalThis|window|document|self|navigator|localStorage|sessionStorage|indexedDB)\b|\b(?:process|globalThis|window|document|self|navigator|localStorage|sessionStorage|indexedDB)\b(?!\s*:))/, "ホストの環境には触れない"],
     [/\b(ctx|context)\.(console|ime|keyboard|crt)\b|\bbios\.(console|ime)\b/, "文字盤・日本語入力・CRT の機能は使わない"],
     [/\bbios\.image\b/, "画像は ctx.image で扱う"],
     [/\bimage\.(load|show|decode|loadPalette|decoder)\b/, "画像を読みに行かない。同梱した画像は env.images に読み込み済みで届く。ctx.image.palette / reduce に渡す"],
