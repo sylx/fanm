@@ -65,7 +65,7 @@ WORKDIR /app
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
-    && npm install -g @anthropic-ai/claude-code@2.1.280 @openai/codex@0.147.0 \
+    && npm install -g @anthropic-ai/claude-code@2.1.280 @openai/codex@0.170.0 \
     && npm cache clean --force
 
 COPY --from=build --chown=node:node /app /app
