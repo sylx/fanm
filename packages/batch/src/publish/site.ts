@@ -7,6 +7,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameS
 import { join, resolve } from "node:path";
 import type { WorkMeta } from "@fanm/work";
 import { buildEngine, buildWork } from "./build.js";
+import { IMAGES_DIR } from "../check/images.js";
 import { catalogFiles } from "../../../gallery/server/catalog.js";
 
 const ROOT = resolve(import.meta.dirname, "../../../..");
@@ -63,6 +64,15 @@ export async function assemble(worksDir: string, siteDir: string): Promise<Assem
         const thumb = join(work.dir, "thumbnail.png");
         const outThumb = join(siteDir, "works", work.id, "thumb.png");
         if (existsSync(thumb) && stale(thumb, outThumb)) copyFileSync(thumb, outThumb);
+        // 同梱の画像。プレイヤーが meta.json の images を見て、起動の前に読む。
+        for (const name of work.meta.images ?? []) {
+            const image = join(work.dir, IMAGES_DIR, `${name}.png`);
+            const outImage = join(siteDir, "works", work.id, IMAGES_DIR, `${name}.png`);
+            if (stale(image, outImage)) {
+                mkdirSync(join(outImage, ".."), { recursive: true });
+                copyFileSync(image, outImage);
+            }
+        }
     }
 
     const catalog: CatalogEntry[] = works

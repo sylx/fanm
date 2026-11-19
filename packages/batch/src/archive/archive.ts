@@ -1,6 +1,6 @@
 // 作品庫。採用作は <VAR>/works/<id>/ に保存する。
 //
-//     public/    ギャラリーに出すもの: work.ts, meta.json（WorkMeta）, thumbnail.png
+//     public/    ギャラリーに出すもの: work.ts, meta.json（WorkMeta）, thumbnail.png, images/（同梱の画像があれば）
 //     private/   出さないもの: 企画、検査結果、AI 呼出しの記録と費用
 //
 // 公開用の work.js は publish の段階で public/work.ts からビルドする。
@@ -11,10 +11,11 @@
 // TODO: 不採用作の jobs/ を保存期間と容量の上限で消す。
 
 import { execFileSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { WorkDescription, WorkMeta } from "@fanm/work";
 import type { CheckReport } from "../check/check.js";
+import { IMAGES_DIR, imageNames } from "../check/images.js";
 import type { Job } from "../jobs/job.js";
 import type { KnownAuthor } from "../persona/pen-name.js";
 import type { Plan } from "../plan/planner.js";
@@ -60,6 +61,7 @@ export class Archive {
         mkdirSync(priv, { recursive: true });
 
         const description = JSON.parse(readFileSync(join(attemptDir, "meta.json"), "utf8")) as WorkDescription;
+        const images = imageNames(attemptDir);
         const meta: WorkMeta = {
             id: job.id,
             title: description.title,
@@ -72,9 +74,11 @@ export class Archive {
             penName: job.persona?.penName,
             traits: job.persona?.traits,
             seed: job.seed,
-            thumbnail: "thumbnail.png"
+            thumbnail: "thumbnail.png",
+            ...(images.length ? { images } : {})
         };
         copyFileSync(join(attemptDir, "work.ts"), join(pub, "work.ts"));
+        if (images.length) cpSync(join(attemptDir, IMAGES_DIR), join(pub, IMAGES_DIR), { recursive: true });
         if (report.thumbnail) copyFileSync(report.thumbnail, join(pub, "thumbnail.png"));
         writeFileSync(join(pub, "meta.json"), JSON.stringify(meta, null, 2));
 

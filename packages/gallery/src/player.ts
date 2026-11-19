@@ -7,9 +7,12 @@
 // ここでエンジンを静的に import してはいけない。プレイヤーの中に二つ目の
 // エンジンが入り、作品と別のエンジンで動くことになる。
 //
+// 作品に同梱の画像（works/<id>/images/<名前>.png）があれば、起動の前にここで
+// 読んで env.images に渡す。作品は自分では何も読みに行けない。
+//
 // 開発中は、まだビルドしていない手元の作品やテンプレートも直接読める。
 
-import { createEnv, type WorkFactory } from "@fanm/work";
+import { createEnv, type WorkFactory, type WorkImage } from "@fanm/work";
 import type { CatalogEntry } from "./catalog-entry.js";
 import { MUTED_KEY, VOLUME_KEY, gainFor, parseLevel } from "./volume.js";
 
@@ -20,6 +23,8 @@ interface Loaded {
     readonly factory: WorkFactory;
     readonly seed: number;
     readonly engine: Engine;
+    /** 同梱の画像。名前 → URL。 */
+    readonly images: Readonly<Record<string, string>>;
 }
 
 /**
@@ -81,6 +86,31 @@ async function loadDotFont(): Promise<void> {
     }
 }
 
+/**
+ * 同梱の画像を画素にする。色の補正は掛けない（colorSpaceConversion: none）。
+ * 検査はバッチが PNG をそのまま読んで撮るので、ここで色が動くと、検査で
+ * 見た絵とギャラリーで見る絵の減色の結果が変わる。
+ */
+async function decodeImage(src: string): Promise<WorkImage> {
+    const response = await fetch(src);
+    if (!response.ok) throw new Error(`画像 ${src} を読めない: ${response.status}`);
+    const bitmap = await createImageBitmap(await response.blob(), { colorSpaceConversion: "none", premultiplyAlpha: "none" });
+    try {
+        const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+        const context = canvas.getContext("2d", { willReadFrequently: true })!;
+        context.drawImage(bitmap, 0, 0);
+        const { data } = context.getImageData(0, 0, bitmap.width, bitmap.height);
+        return { width: bitmap.width, height: bitmap.height, data };
+    } finally {
+        bitmap.close();
+    }
+}
+
+async function decodeImages(images: Readonly<Record<string, string>>): Promise<Record<string, WorkImage>> {
+    const entries = await Promise.all(Object.entries(images).map(async ([name, src]) => [name, await decodeImage(src)] as const));
+    return Object.fromEntries(entries);
+}
+
 async function fromCatalog(id: string): Promise<Loaded | null> {
     const response = await fetch(`/works/${encodeURIComponent(id)}/meta.json`).catch(() => null);
     if (!response?.ok) return null;
@@ -91,17 +121,19 @@ async function fromCatalog(id: string): Promise<Loaded | null> {
         import(/* @vite-ignore */ url(entry.work)),
         import(/* @vite-ignore */ url(`engine/${entry.engine.slice(0, 12)}.js`)) as Promise<Engine>
     ]);
-    return { factory: work.default as WorkFactory, seed: entry.seed, engine };
+    const images = Object.fromEntries((entry.images ?? []).map(name =>
+        [name, url(`/works/${encodeURIComponent(id)}/images/${name}.png`)]));
+    return { factory: work.default as WorkFactory, seed: entry.seed, engine, images };
 }
 
 /** 開発サーバーのときだけ。本番のビルドには含まれない。 */
 async function fromDisk(id: string): Promise<Loaded | null> {
     if (!import.meta.env.DEV) return null;
-    const { load } = await import("./dev-works.js");
+    const { load, images } = await import("./dev-works.js");
     const factory = await load(id);
     if (!factory) return null;
     const meta = await fetch(`/works/${encodeURIComponent(id)}/meta.json`).then(response => response.ok ? response.json() as Promise<CatalogEntry> : null).catch(() => null);
-    return { factory, seed: meta?.seed ?? 1, engine: await import("fantasy-msx") };
+    return { factory, seed: meta?.seed ?? 1, engine: await import("fantasy-msx"), images: images(id) };
 }
 
 /** 入る中で一番大きい整数倍。窓が小さくても 1 は下回らない。 */
@@ -146,7 +178,8 @@ if (!found) {
 const via = window.top !== window.self ? (params.get("via") === "auto" ? "auto" : "pick") : "direct";
 navigator.sendBeacon?.(`/api/play?work=${encodeURIComponent(id)}&via=${via}`);
 
-await loadDotFont();
+// 字の面と画像を並べて読む。画像が読めなければ作品は起動できない（env.images を当てにしている）。
+const [, images] = await Promise.all([loadDotFont(), decodeImages(found.images)]);
 
 const seed = params.has("seed") ? Number(params.get("seed")) : found.seed;
 const button = document.querySelector("#crt") as HTMLButtonElement;
@@ -174,7 +207,7 @@ function applyVolume(): void {
 function launch(): void {
     runtime?.stop();
     fit(canvas);
-    runtime = found!.engine.run(found!.factory(createEnv(seed)), { canvas, crt, volume: gainFor(level), muted });
+    runtime = found!.engine.run(found!.factory(createEnv(seed, images)), { canvas, crt, volume: gainFor(level), muted });
     applyVolume();
     // WebGL2 が無い環境では host が平面描画に落とすので、押しても効かない。
     button.setAttribute("aria-pressed", String(crt && !!runtime.crt));

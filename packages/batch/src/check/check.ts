@@ -9,6 +9,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { createRandom, type Scenario, type ScenarioInput, type WorkDescription } from "@fanm/work";
 import { runIsolated } from "./isolated.js";
+import { imageNames } from "./images.js";
 import { DEFAULT_MAX_OVERLAP, overlap, type Overlap } from "./overlap.js";
 import { slowAdvice } from "./pace.js";
 import type { RunnerCapture } from "./runner.js";
@@ -151,7 +152,9 @@ export async function checkWork(dir: string, seed: number, options: CheckOptions
     const fail = (stage: CheckReport["stage"], problems: string[], captures: readonly RunnerCapture[] = [], observations = ""): CheckReport =>
         ({ ok: false, stage, problems, observations, captures, overlaps, scenario });
 
-    const lint = staticCheck(source);
+    // 同梱の画像（<dir>/images/*.png）。名前の決まりを外れていれば、ここで投げる（作るのはバッチなので、AI へは返さない）。
+    const images = imageNames(dir);
+    const lint = staticCheck(source, { images: images.length > 0 });
     if (lint.length) return fail("static", lint);
 
     const copied = judgeOverlap(overlaps, options.maxOverlap ?? DEFAULT_MAX_OVERLAP);

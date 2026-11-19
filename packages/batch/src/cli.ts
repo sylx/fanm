@@ -25,18 +25,19 @@
 //
 // --fake は APIキーなしで一周させる偽のAIを使う。予算台帳も別（<VAR>/fake/）。
 
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { Archive } from "./archive/archive.js";
 import { BudgetExceeded, Ledger } from "./budget/ledger.js";
 import { checkWork } from "./check/check.js";
+import { IMAGES_DIR } from "./check/images.js";
 import { overlap } from "./check/overlap.js";
 import { loadConfig, VAR } from "./config.js";
 import { JobStore } from "./jobs/job.js";
 import { make } from "./jobs/make.js";
 import { summary } from "./jobs/summary.js";
 import { activeForms, formOf } from "./plan/forms.js";
-import { season, TEMPLATES } from "./plan/season.js";
+import { DEPARTMENTS, season, TEMPLATES } from "./plan/season.js";
 import { template } from "./prompts.js";
 import { deckBrief, deckNamed, FAKE_DECK, verifyDeck } from "./providers/deck.js";
 import { fetchPlays } from "./publish/plays.js";
@@ -191,6 +192,7 @@ async function runCheck(dir: string): Promise<number> {
     rmSync(work, { recursive: true, force: true });
     mkdirSync(work, { recursive: true });
     for (const file of ["work.ts", "meta.json"]) copyFileSync(join(dir, file), join(work, file));
+    if (existsSync(join(dir, IMAGES_DIR))) cpSync(join(dir, IMAGES_DIR), join(work, IMAGES_DIR), { recursive: true });
     const report = await checkWork(work, 1);
     console.log(`撮影: ${join(work, "check")}`);
     console.log(`${report.stage}${report.ok ? "" : "\n" + report.problems.join("\n")}\n${report.observations}`);
@@ -321,6 +323,10 @@ switch (command) {
             const now = season();
             console.log(`シーズン ${now.season}: 型は ${now.forms.map(f => f.id).join(", ")}${now.retired.length ? `（休み: ${now.retired.map(f => f.id).join(", ")}）` : ""}`);
             dirs.push(...now.forms.map(f => join(TEMPLATES, f.id)));
+            // シーズンの外の部門の実例も、同じように動かして撮る。
+            if (existsSync(DEPARTMENTS)) {
+                dirs.push(...readdirSync(DEPARTMENTS).map(d => join(DEPARTMENTS, d)).filter(d => existsSync(join(d, "work.ts"))));
+            }
         }
         if (!dirs.length) throw new Error("usage: fanm check <dir>... | fanm check --templates");
         let failed = 0;

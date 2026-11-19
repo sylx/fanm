@@ -27,6 +27,7 @@ fanM/
 │  │     └─ publish/       公開先への接続
 │  └─ gallery/             @fanm/gallery ギャラリーサイト（目録 + iframe プレイヤー、Cloudflare Workers）
 ├─ templates/<型>/         作品の型ごとの手引き（form.md）と実例（work.ts）。AIへ渡すものであり、結線確認も兼ねる
+├─ departments/<部門>/     シーズンの外の常設の部門の実例。いまは画像を同梱する D部門（departments/d/）だけ
 ├─ prompts/                AIへ渡す制作ルールと資料
 ├─ config/                 設定の例。実設定 fanm.json は git に入れない
 ├─ wrangler.jsonc          公開先（Worker 名と fanm.oyabanare.com）。置き場所は publish が渡す
@@ -97,6 +98,11 @@ fanM/
 
 - `work.ts` は `(env: WorkEnv) => App` を default export する。起動ごとに状態を作り直せるよう、`App` を直接は出さない。
 - 時刻はフレーム、乱数は `env.random`（seed 付き mulberry32）。
+- 画像を同梱できる（D部門）。作品のディレクトリの `images/<名前>.png` が `env.images.<名前>`（減色していない RGBA）として届く。名前は英小文字・数字・`_`、形式は PNG だけ、一枚 1024×1024 画素まで（`check/images.ts`）。
+  - 作品は画像を自分では読みに行かない。ヘッドレスの検査は同期でフレームを進めるので、`image.load` の Promise は撮影が終わるまで解決しない。だから検査ではバッチ（`check/runner.ts`）が、ギャラリーではプレイヤーが、起動の前に読んで渡す。作品は `ctx.image.palette` / `reduce` / `drawNow` で画面に落とす。
+  - 静的検査は、画像を同梱した作品にだけ `ctx.image` を許し、`image.load` / `show` / `decode` / `loadPalette` / `decoder` はいつも禁じる。
+  - プレイヤーは色の補正を掛けずに読む（`colorSpaceConversion: "none"`）。検査で撮った絵と同じ減色の結果にするため。
+  - 作品庫では `public/images/`、公開物では `works/<id>/images/` に置き、`meta.json` の `images` に名前を並べる。
 - `meta.json` のうち、AI が書くのは `WorkDescription`（タイトル、説明、操作、長さ）。id、日時、エンジンのコミット、書いたモデル名、seed、サムネイルはバッチが足す。モデル名は生成・修正の呼出しの記録から採るので、事業者を増やしても作品ごとにどの頭が書いたか残る（記録を始める前の作品には無い）。
 
 ## 公開物の組み立て（`fanm publish`）
@@ -110,6 +116,7 @@ var/site/                        これがそのまま公開する中身
 ├─ engine/<commit>.js            エンジン。コミットごとに一つ（213KB）
 ├─ works/<id>/work.js            作品。エンジンを含まず 3KB 程度
 ├─ works/<id>/thumb.png          サムネイル
+├─ works/<id>/images/<名前>.png  同梱の画像（D部門の作品だけ）
 ├─ works/<id>/meta.json          一作品の再生情報・説明
 ├─ works/catalog.json            検索・年月選択・ランダム再生の軽量索引
 ├─ works/catalog/<hash>.json      一覧情報。古い順で96件ずつに分割

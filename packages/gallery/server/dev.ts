@@ -47,6 +47,11 @@ export function galleryDev(root: string): Plugin {
                                 const file = join(archive, thumb[1], "public/thumbnail.png");
                                 if (existsSync(file)) return new Response(readFileSync(file), { headers: { "Content-Type": "image/png" } });
                             }
+                            const image = /^\/works\/([a-zA-Z0-9_-]+)\/images\/([a-z][a-z0-9_]*)\.png$/.exec(path);
+                            if (image) {
+                                const file = join(archive, image[1], "public/images", `${image[2]}.png`);
+                                if (existsSync(file)) return new Response(readFileSync(file), { headers: { "Content-Type": "image/png" } });
+                            }
                             return new Response("Not found", { status: 404 });
                         }
                     };

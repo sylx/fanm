@@ -13,7 +13,9 @@ const FORBIDDEN: readonly [RegExp, string][] = [
     [/\bimport\s*\(/, "動的 import は使わない"],
     [/\brequire\s*\(/, "require は使わない"],
     [/\b(process|globalThis|window|document|self|navigator|localStorage|sessionStorage|indexedDB)\b/, "ホストの環境には触れない"],
-    [/\b(ctx|context)\.(image|console|ime|keyboard|crt)\b|\bbios\.(image|console|ime)\b/, "画像・文字盤・日本語入力・CRT の機能は使わない"],
+    [/\b(ctx|context)\.(console|ime|keyboard|crt)\b|\bbios\.(console|ime)\b/, "文字盤・日本語入力・CRT の機能は使わない"],
+    [/\bbios\.image\b/, "画像は ctx.image で扱う"],
+    [/\bimage\.(load|show|decode|loadPalette|decoder)\b/, "画像を読みに行かない。同梱した画像は env.images に読み込み済みで届く。ctx.image.palette / reduce に渡す"],
     [/\btext\.(load|ready)\s*\(/, "text.load / text.ready は使わない。ドット面はプレイヤーが先に読んでいる"]
 ];
 
@@ -25,7 +27,12 @@ function stripCommentsAndStrings(source: string): string {
     );
 }
 
-export function staticCheck(source: string): string[] {
+export interface StaticOptions {
+    /** 作品が画像を同梱している。ctx.image で減色して置くことを許す。 */
+    readonly images?: boolean;
+}
+
+export function staticCheck(source: string, options: StaticOptions = {}): string[] {
     const problems: string[] = [];
     for (const match of source.matchAll(/\bfrom\s+["']([^"']+)["']|\bimport\s+["']([^"']+)["']/g)) {
         const name = match[1] ?? match[2];
@@ -36,6 +43,10 @@ export function staticCheck(source: string): string[] {
     for (const [pattern, reason] of FORBIDDEN) {
         const line = lines.findIndex(l => pattern.test(l));
         if (line >= 0) problems.push(`${line + 1}行目: ${reason}`);
+    }
+    if (!options.images) {
+        const line = lines.findIndex(l => /\b(ctx|context)\.image\b/.test(l));
+        if (line >= 0) problems.push(`${line + 1}行目: この作品は画像を同梱していないので、ctx.image は使わない`);
     }
     if (!/\bexport\s+default\b/.test(code)) problems.push("default export がない。WorkFactory を default export する");
     return problems;

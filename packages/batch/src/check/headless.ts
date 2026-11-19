@@ -6,7 +6,7 @@
 
 import { BUTTON, boot } from "fantasy-msx";
 import { readFrame, type Image } from "fantasy-msx/tools/capture.js";
-import { createEnv, type Scenario, type WorkFactory } from "@fanm/work";
+import { createEnv, type Scenario, type WorkFactory, type WorkImage } from "@fanm/work";
 import { PACE } from "./pace.js";
 import { rasteriseWithDots } from "./typeset.js";
 
@@ -24,7 +24,10 @@ export type RunResult =
     /** 遅すぎて最後まで走らないと分かったので、途中でやめた。 */
     | { readonly ok: false; readonly slow: true; readonly frame: number; readonly msPerFrame: number; readonly captures: readonly Capture[] };
 
-export function runHeadless(factory: WorkFactory, scenario: Scenario, onProgress?: (frame: number) => void): RunResult {
+export function runHeadless(
+    factory: WorkFactory, scenario: Scenario, onProgress?: (frame: number) => void,
+    images: Readonly<Record<string, WorkImage>> = {}
+): RunResult {
     const runtime = boot();
     runtime.bios.text.rasteriser = rasteriseWithDots;
     const captures: Capture[] = [];
@@ -32,7 +35,7 @@ export function runHeadless(factory: WorkFactory, scenario: Scenario, onProgress
     const started = performance.now();
     let frame = 0;
     try {
-        runtime.run(factory(createEnv(scenario.seed)));
+        runtime.run(factory(createEnv(scenario.seed, images)));
         for (; frame < scenario.frames; ++frame) {
             for (const input of scenario.inputs) {
                 if (input.frame !== frame) continue;

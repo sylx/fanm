@@ -2,13 +2,14 @@
 //
 // 生成コードはこのプロセスの中だけで動く。親（isolated.ts）が作品と
 // このファイルを一つの JS に束ね、時間とメモリの上限をかけ、読み書きを
-// outDir に限った node で実行する。
+// outDir に限った node で実行する。同梱の画像も、親が outDir/images/ へ写しておく。
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { encodePNG } from "fantasy-msx/tools/png.js";
 import type { Scenario, WorkFactory } from "@fanm/work";
 import { runHeadless } from "./headless.js";
+import { loadImages } from "./images.js";
 import { measure, type ImageStats } from "./stats.js";
 
 export interface RunnerCapture {
@@ -38,9 +39,10 @@ export function record(factory: unknown, scenarioPath: string, outDir: string): 
         if (typeof factory !== "function") throw new Error("work.ts の default export が関数ではない");
         // 途中経過。時間切れで殺されたとき、親がどこまで進んだかを知るため。
         const progress = join(outDir, "progress.json");
+        const images = loadImages(outDir);
         const run = runHeadless(factory as WorkFactory, scenario, frame => {
             writeFileSync(progress, JSON.stringify({ frame, ms: performance.now() - started }));
-        });
+        }, images);
         let previous: Uint32Array | undefined;
         const captures = run.captures.map(capture => {
             const file = `${capture.frame}.png`;

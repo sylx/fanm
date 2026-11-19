@@ -20,6 +20,11 @@ import { join, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dirname, "../../../..");
 export const TEMPLATES = join(ROOT, "templates");
+/**
+ * 部門の実例（departments/<部門>/）。型と違ってシーズンの外にあり、月次の
+ * 作り変えは触らない。いまは画像を同梱する D部門だけ。
+ */
+export const DEPARTMENTS = join(ROOT, "departments");
 
 export interface Form {
     /** templates/<id>/ の名前であり、企画に残る名前。 */

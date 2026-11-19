@@ -9,13 +9,35 @@
 // エクスポートせず、env を受け取って App を返す関数にする。時刻は
 // ctx.frame などのフレーム基準、乱数は env.random だけを使う。
 
-import type { App, BUTTON, TextStyle } from "fantasy-msx";
+import type { App, BUTTON, RgbaImage, TextStyle } from "fantasy-msx";
+
+/**
+ * 作品に同梱した画像の一枚。色は減らしていない（RGBA）。
+ *
+ * 作品は画像を自分では読みに行けない（fetch も image.load も使えない）。
+ * 検査ではヘッドレスのエンジンが同期でフレームを進めるので、Promise は
+ * 撮影が終わるまで解決しない。だから、検査ならバッチが、ギャラリーなら
+ * プレイヤーが、起動の前に読んでおいて env.images で渡す。作品はそれを
+ * ctx.image.palette / reduce に掛け、drawNow で VRAM に置く。
+ *
+ *     const picture = ctx.image.reduce(env.images.castle, { width: 256, height: 212, fit: "cover", dither: "ordered" });
+ *     ctx.image.drawNow(picture);
+ */
+export type WorkImage = RgbaImage;
+
+/** 画像の名前。`images/<名前>.png` に置き、`env.images.<名前>` で受け取る。 */
+export const IMAGE_NAME = /^[a-z][a-z0-9_]{0,31}$/;
 
 export interface WorkEnv {
     /** この再生の乱数seed。検証時と公開時で同じ値を渡せば同じ絵になる。 */
     readonly seed: number;
     /** seed から作った乱数。Math.random の代わりに使う。 */
     readonly random: () => number;
+    /**
+     * 作品に同梱した画像。名前 → 画素。画像を持たない作品では空。
+     * 無い名前を引くと、あるものの一覧を付けて例外を投げる。
+     */
+    readonly images: Readonly<Record<string, WorkImage>>;
 }
 
 export type WorkFactory = (env: WorkEnv) => App;
@@ -92,6 +114,11 @@ export interface WorkMeta extends WorkDescription {
     readonly traits?: Readonly<Record<string, number | string>>;
     readonly seed: number;
     readonly thumbnail: string;
+    /**
+     * 同梱した画像の名前。ファイルは作品の隣の `images/<名前>.png`。
+     * プレイヤーはこれを読んでから作品を起動する。画像の無い作品にはない。
+     */
+    readonly images?: readonly string[];
 }
 
 /** mulberry32。小さく、どの環境でも同じ列を返す。 */
@@ -106,6 +133,25 @@ export function createRandom(seed: number): () => number {
     };
 }
 
-export function createEnv(seed: number): WorkEnv {
-    return { seed, random: createRandom(seed) };
+export function createEnv(seed: number, images: Readonly<Record<string, WorkImage>> = {}): WorkEnv {
+    return { seed, random: createRandom(seed), images: guardImages(images) };
+}
+
+/**
+ * 無い名前を引いたら、その場で分かるようにする。素通しにすると undefined が
+ * reduce の奥まで届き、「width を読めない」という手掛かりの無い例外になる。
+ * 検査の所見はそのまま AI へ返るので、名前の取り違えだと読める文にしておく。
+ */
+function guardImages(images: Readonly<Record<string, WorkImage>>): Readonly<Record<string, WorkImage>> {
+    const names = Object.keys(images);
+    return new Proxy(Object.freeze({ ...images }), {
+        get(target, key, receiver) {
+            if (typeof key !== "string" || Object.hasOwn(target, key) || key in Object.prototype || key === "then" || key === "toJSON") {
+                return Reflect.get(target, key, receiver);
+            }
+            throw new Error(names.length
+                ? `env.images.${key} は無い。同梱している画像は ${names.join(", ")}`
+                : `env.images.${key} は無い。この作品は画像を同梱していない`);
+        }
+    });
 }

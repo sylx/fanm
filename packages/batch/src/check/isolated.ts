@@ -8,10 +8,11 @@
 // fetch などを禁じている。本番ではコンテナのネットワークを切った中で動かす。
 
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { build } from "esbuild";
 import type { Scenario } from "@fanm/work";
+import { IMAGES_DIR } from "./images.js";
 import { slowAdvice, stallAdvice } from "./pace.js";
 import type { RunnerResult } from "./runner.js";
 
@@ -75,6 +76,11 @@ function timeoutMessage(outDir: string, frames: number, timeoutMs: number): stri
 export async function runIsolated(workPath: string, scenario: Scenario, outDir: string, options: IsolatedOptions): Promise<IsolatedResult> {
     const buildError = await bundle(workPath, outDir);
     if (buildError) return { stage: "build", error: buildError };
+
+    // 子が読めるのは outDir の中だけなので、同梱の画像はそこへ写す（runner.ts が読む）。
+    const images = join(resolve(workPath, ".."), IMAGES_DIR);
+    rmSync(join(outDir, IMAGES_DIR), { recursive: true, force: true });
+    if (existsSync(images)) cpSync(images, join(outDir, IMAGES_DIR), { recursive: true });
 
     const scenarioPath = join(outDir, "scenario.json");
     writeFileSync(scenarioPath, JSON.stringify(scenario, null, 2));
