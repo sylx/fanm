@@ -2,7 +2,10 @@
   "departments": [
     {
       "id": "d",
-      "label": "一枚絵"
+      "label": "D部門",
+      "skipForms": [
+        "tiles"
+      ]
     }
   ]
 }

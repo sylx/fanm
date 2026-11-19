@@ -13,8 +13,10 @@ export interface Request {
     readonly at: string;
     /** 頼む相手の指定（事業者の名前かモデル名）。無ければ、ふだんどおり札束から引く。 */
     readonly provider?: string;
-    /** 作る型の指定（型か部門の名前。d なら D部門）。無ければ、ふだんどおり選ぶ。 */
+    /** 作る型の指定。無ければ、ふだんどおり選ぶ。 */
     readonly form?: string;
+    /** 部門の指定（d なら D部門）。無ければ、ふだんどおり設定の割合で決める。 */
+    readonly department?: string;
 }
 
 export function requestPath(varDir: string): string {

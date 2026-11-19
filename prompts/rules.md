@@ -47,7 +47,7 @@ export default create;
 - 乱数は `env.random()` だけを使う。`Math.random` は使わない。
 - 外部と通信しない。`fetch` などは使わない。`window`、`document`、`globalThis`、`process` などホストの環境に触れない。
 - `ctx.console`、`ctx.ime`、`ctx.keyboard`、`ctx.crt` は使わない。
-- `ctx.image` は、絵を同梱した作品（一枚絵の型）だけが使う。そのときも画像を読みに行く `image.load` / `image.show` / `image.decode` は使わない。絵は `env.images` に読み込み済みで届く。
+- `ctx.image` は、絵を同梱した作品（D部門の作品）だけが使う。そのときも画像を読みに行く `image.load` / `image.show` / `image.decode` は使わない。絵は `env.images` に読み込み済みで届く。
 - 文字は二通り。**ASCII は `gfx.text` / `gfx.now.text`**（内蔵の 6x8 フォント。速い）。**日本語は `ctx.text`**。
   - `text.style = DOT_STYLE`（`@fanm/work`）を一度渡してから、`text.drawNow(x, y, "…", { color: 15 })` で描く。
   - `DOT_STYLE` の中身（font、size、stretch、snap、lineHeight）は変えない。この面には一つの大きさしかない。
@@ -63,7 +63,7 @@ export default create;
 
 - **`ctx` から使うものを分割代入する。** `update({ screen, gfx })` のように受け取る。関数の外で `screen` と書くと、ブラウザの `window.screen` として解釈され、`setColor` も `setMode` も無いと言われる。`gfx` や `sprites` を使う関数には `ctx` を渡す。
 - **画面モードは `screen.setMode("G4")`。** 値は `"G4"`（SCREEN 5）、`"G5"`（SCREEN 6）、`"G6"`（SCREEN 7）、`"G7"`（SCREEN 8）、キャラクタ画面の `"G1"`（SCREEN 1）、`"G2"`（SCREEN 2）、`"G3"`（SCREEN 4）。`"screen7"` や `"graphic7"` という値は無い。
-- **時刻は `ctx.frame`。** `env` にあるのは `seed` と `random` と `images`（同梱の絵。一枚絵の型だけ）で、`env.frame` は無い。
+- **時刻は `ctx.frame`。** `env` にあるのは `seed` と `random` と `images`（同梱の絵。D部門の作品だけ）で、`env.frame` は無い。
 - **パレットは `screen.setColor(index, r, g, b)` か `screen.setPalette([[r,g,b], ...])`。** `setPaletteEntry` は Screen には無い。
 - **スプライトは `ctx.sprites`。** `sprites.setPatternFromBitmap(n, [...])`、`sprites.set(n, {...})`、`sprites.move(n, x, y)`、`sprites.setActiveCount(n)`。多色は `sprites.setMulticolorPattern(n, [...])` が返したものを `sprites.setMulticolor(n, { x, y, pattern })` に渡す。`gfx` にスプライトの命令は無い。
 - **キャラクタは `ctx.tiles`。** `system.pcg` や `createSystem()` は使わない（作品には渡っていない）。`NameBuffer` は `fantasy-msx` から import して `new NameBuffer()` で作る。`tiles` の命令は G1 / G2 / G3 でしか動かず、G4〜G7 で呼ぶとエラーになる。逆に `gfx` は G1〜G3 でエラーになる。

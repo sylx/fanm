@@ -6,7 +6,7 @@
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { Message } from "./providers/provider.js";
-import { formDir } from "./plan/season.js";
+import { departmentGuide, departmentOf } from "./plan/season.js";
 
 const ROOT = resolve(import.meta.dirname, "../../..");
 
@@ -25,12 +25,17 @@ export function system(): Message {
     return { role: "system", content: `${prompt("rules.md")}\n\n${prompt("api.md")}` };
 }
 
-/** 型の手引き。templates/<form>/form.md（部門なら departments/<form>/form.md）。 */
-export function formBrief(form: string): string {
-    return readFileSync(join(formDir(form), "form.md"), "utf8").trim();
+/**
+ * 型の手引き。templates/<form>/form.md。部門の作品なら、そのあとに部門の手引き
+ * （departments/<部門>/guide.md）を足す。型の作法を守ったうえで、部門の決まりを重ねる。
+ */
+export function formBrief(form: string, department?: string): string {
+    const brief = readFileSync(join(ROOT, "templates", form, "form.md"), "utf8").trim();
+    const outside = departmentOf(department);
+    return outside ? `${brief}\n\n### この作品は${outside.label}\n\n${departmentGuide(outside.id)}` : brief;
 }
 
-/** 型の実例。templates/<form>/work.ts（部門なら departments/<form>/work.ts）。 */
+/** 型の実例。templates/<form>/work.ts。 */
 export function template(form: string): string {
-    return readFileSync(join(formDir(form), "work.ts"), "utf8");
+    return readFileSync(join(ROOT, "templates", form, "work.ts"), "utf8");
 }

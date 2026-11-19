@@ -40,14 +40,15 @@ npm run makenow                 # 手元で。つくって Cloudflare まで
 npm run makenow -- --local      # 送らずに var/site へ組み立てるだけ
 npm run makenow -- --provider claude          # 今回は Claude に頼む
 npm run makenow -- --provider claude-opus-5-5 # モデル名でも指せる
-npm run makenow -- --form d                   # 今回は D部門（一枚絵）を作る
-npm run makenow -- --form d --provider codex  # 型と相手を両方指す
+npm run makenow -- --department d             # 今回は D部門の作品を作る（型はふだんどおり選ぶ）
+npm run makenow -- --form poem --department d # D部門の詩
+npm run makenow -- --form ambient             # 型だけを指す
 docker exec -it <container> node_modules/.bin/tsx packages/batch/src/cli.ts makenow
 ```
 
 `--provider` は今回だけ相手を指す（[札束](#頼む相手を変える混ぜる)からふだんどおり引かせない）。事業者の名前で指すと、その事業者の札が複数あればその中から引く。札束にいない相手を指すと、頼む前にその場で止まる。常駐に頼むときも指定は一緒に渡る。試したい相手が `share` を絞られていても、これなら待たずに一作品出せる。
 
-`--form` は今回だけ作る型を指す。シーズンの型でも部門でもよく、`--form d` なら D部門（一枚絵）になる。`departments.d.share` が 0 のままでも作れるので、割合を上げる前に本番で一作品試すのにも使う。いまの型と部門に無い名前を指すと、頼む前にその場で止まる。常駐に頼むときも一緒に渡る。中断していたジョブが企画まで済んでいたら、そのジョブの型のまま続け、指定は効かない（ログに出る）。
+`--form` は今回だけ作る型を、`--department` は部門を指す。二つは掛け合わせで、`--department d` だけなら型はふだんどおり選ばれ、`--form poem --department d` なら D部門の詩になる。`departments.d.share` が 0 のままでも作れるので、割合を上げる前に本番で一作品試すのにも使う。いまの型・部門に無い名前や、組めない組み合わせ（D部門とキャラクタ画面）を指すと、頼む前にその場で止まる。常駐に頼むときも一緒に渡る。中断していたジョブが企画まで済んでいたら、そのジョブの型と部門のまま続け、指定は効かない（ログに出る）。
 
 常駐が動いているかどうかで、することが変わる。
 
@@ -337,9 +338,9 @@ OpenAI はこの使い方を「信頼できる私的な自動化」向けの上�
 
 **軸を足すときは `neutral`（その軸が無かったころの振る舞い）を書く。** 鍵は `neutral` の軸を含めないので、新しい軸が `neutral` の作り手は前と同じ名前のまま、それ以外の値を引いた作り手は新しい名前になる。軸と選択肢の id、連続の軸の刻みは変えない（変えると鍵が変わる）。頼みに入れる文はいつ書き替えてもよい。
 
-## D部門（一枚絵）
+## D部門
 
-画像生成の AI に絵を描かせ、作品に同梱して MSX の画面に落とす作品（`departments/d/`）。シーズンの外に常設していて、月次の作り変えは触らない。どれだけ作るかは `fanm.json` の `departments.d.share`（一作品が D部門になる割合、0〜1）で決める。**既定は 0（作らない）。**
+画像生成の AI に絵を描かせ、作品に同梱して MSX の画面に落とす（`departments/d/`）。D部門は型に掛け合わせる印で、型はいつもどおりシーズンから選ぶ（D部門の環境デモ、D部門のアドベンチャー、…）。キャラクタ画面は絵を置く場所が無いので組まない。シーズンの外に常設していて、月次の作り変えは触らない。どれだけ作るかは `fanm.json` の `departments.d.share`（一作品が D部門になる割合、0〜1）で決める。**既定は 0（作らない）。**
 
 ```json
 {
@@ -349,7 +350,7 @@ OpenAI はこの使い方を「信頼できる私的な自動化」向けの上�
 }
 ```
 
-- 当たるかどうかはジョブの種で決まるので、やり直しても変わらない。当たらなかったジョブはいつもどおりシーズンの型から選ぶ。
+- 当たるかどうかはジョブの種で決まるので、やり直しても変わらない。当たっても当たらなくても、型はシーズンから選ぶ。
 - 描き手（`painters`）はいま Codex だけで、先頭の一人を使う。ChatGPT の定額の枠で描くので、台帳には $0 で載る。描く相手は書く相手（`providers` の札束）とは別で、DeepSeek が書く作品にも Codex が描いた絵が入る。
 - 段取りは 企画 → **描く** → 生成 → 検査。企画が絵を1〜2枚頼み（英語の文）、一枚 30 秒ほどで描かれ、512×424 に収まるよう縮めてジョブの `images/` に置かれる。生成の頼みには、描き手に渡した文と、その絵から選ばれる16色の表が入る。
 - 描けなかったら（枠切れも含めて）その作品は不採用にする。認証切れだけは知らせる。
@@ -360,7 +361,7 @@ OpenAI はこの使い方を「信頼できる私的な自動化」向けの上�
 scripts/fanm-shell.sh fanm paint "Pixel art of a lighthouse in a storm" --name test
 ```
 
-`/data/paint/<時刻>/` に縮めた絵（`images/test.png`）、届いたままの絵（`raw.png`）、G4 に落とした見本（`g4.png`）ができれば描ける。割合を上げる前に一作品作って公開まで通すなら `scripts/fanm-shell.sh fanm makenow --form d`（手元なら `npm run makenow -- --form d`）。
+`/data/paint/<時刻>/` に縮めた絵（`images/test.png`）、届いたままの絵（`raw.png`）、G4 に落とした見本（`g4.png`）ができれば描ける。割合を上げる前に一作品作って公開まで通すなら `scripts/fanm-shell.sh fanm makenow --department d`（手元なら `npm run makenow -- --department d`）。
 
 ## コンテナ
 

@@ -2,8 +2,9 @@
 //
 //     企画 → (描く →) 生成 → 検査 → (修正 → 検査)×最大 maxRepairs → 採用 | 不採用
 //
-// 描くのは D部門（一枚絵）の作品だけ。企画が頼んだ絵を描き手に描かせ、ジョブの
-// images/ に置く。試行ごとにそれを写し、作品に同梱して検査する。
+// 描くのは D部門の作品だけ。D部門は型に掛け合わせる印で、型はいつもどおり選ぶ。
+// 企画が頼んだ絵を描き手に描かせ、ジョブの images/ に置く。試行ごとにそれを写し、
+// 作品に同梱して検査する。
 //
 // どの段階で止まっても、次に呼べば続きから進む。作品単位の予算を超えたら
 // 不採用。月の予算を超えたら BudgetExceeded をそのまま投げ、ジョブは残す。
@@ -19,7 +20,8 @@ import type { Config, ProviderConfig } from "../config.js";
 import { FormatError, generateRequest, parseFiles, type PastAttempt } from "../generate/generator.js";
 import { picturesBrief } from "../paint/brief.js";
 import { createPainter, paintPicture } from "../paint/paint.js";
-import { formOf, isDepartment, pickForm, type Form } from "../plan/forms.js";
+import { activeForms, formOf, pickForm } from "../plan/forms.js";
+import { departmentOf, type Department } from "../plan/season.js";
 import { penName } from "../persona/pen-name.js";
 import { drawTraits, personaBrief } from "../persona/persona.js";
 import { parsePlan, planRequest } from "../plan/planner.js";
@@ -140,41 +142,49 @@ export async function make(base: MakeContext, job: Job): Promise<Job> {
 async function plan(ctx: Making, job: Job): Promise<void> {
     // 直近120作。詳しく見せるのは近い24作だけで、残りは題と題材（planner.ts の pastBrief）。
     const past = ctx.archive.plans(120);
-    // 型はAIに選ばせない。部門（設定の割合）に当たらなければ、過去作に少ない型を当てる。
-    // 同じジョブなら毎回同じ型。
-    const form = job.form ? formOf(job.form) : department(ctx, job) ?? pickForm(past, createRandom(job.seed));
+    // 部門が先。D部門に当たったら、絵を置けない型を除いて選ぶ。
+    const outside = department(ctx, job);
+    job.department = outside?.id;
+    // 型はAIに選ばせない。過去作に少ない型を当てる。同じジョブなら毎回同じ型。
+    const choices = outside ? activeForms().filter(f => !outside.skipForms.includes(f.id)) : activeForms();
+    const form = job.form ? formOf(job.form) : pickForm(past, createRandom(job.seed), choices);
     job.form = form.id;
     // 縛りも引く。型が同じでも段取りが前と変わるように。ジョブの種から引くので、
     // 企画をやり直しても同じ縛りになる。
-    const twist = drawTwist(form.id, past, createRandom(job.seed ^ 0x7c157));
-    ctx.log.line(`${job.id}: 型は${form.label}、縛りは ${twist.map(t => `${t.axis}=${t.option}`).join(" / ")}`);
+    const twist = drawTwist(form.id, past, createRandom(job.seed ^ 0x7c157), job.department);
+    const kind = outside ? `${form.label}・${outside.label}` : form.label;
+    ctx.log.line(`${job.id}: 型は${kind}、縛りは ${twist.map(t => `${t.axis}=${t.option}`).join(" / ")}`);
     ctx.log.line(`${job.id}: 企画を ${ctx.provider.model} に頼む`);
     const result = await call(ctx.provider, ctx.ledger, job.id, "plan",
-        planRequest(past, form, twist, job.persona, ctx.config.generation.planMaxTokens), deltas(ctx.log));
+        planRequest(past, form, twist, job.persona, job.department, ctx.config.generation.planMaxTokens), deltas(ctx.log));
     job.calls.push(result.log);
     try {
-        job.plan = parsePlan(result.text, form, twist);
+        job.plan = parsePlan(result.text, form, twist, job.department);
     } catch (e) {
         // 企画の JSON が壊れているなら、次のループでもう一度企画させる。3回までで諦める。
         ctx.log.line(`${job.id}: 企画を読めない（${(e as Error).message}）`);
         if (job.calls.filter(c => c.purpose === "plan").length >= 3) reject(ctx, job, "企画を3回読めなかった");
         return;
     }
-    ctx.log.line(`${job.id}: 企画「${job.plan.title}」（${form.label}） ${job.plan.pitch}`);
+    ctx.log.line(`${job.id}: 企画「${job.plan.title}」（${kind}） ${job.plan.pitch}`);
     job.state = job.plan.pictures?.length ? "painting" : "generating";
 }
 
 /**
- * 部門に当てるか。設定の割合（departments.d.share）で、ジョブの種から引く。
- * 同じジョブは何度やり直しても同じ答えになる。
+ * 部門に当てるか。指定（--department）されていればそれ。無ければ設定の割合
+ * （departments.d.share）で、ジョブの種から引く。同じジョブは何度やり直しても
+ * 同じ答えになる。型が先に決まっていて（--form）、その型と組めないなら当てない。
  */
-function department(ctx: Making, job: Job): Form | undefined {
+function department(ctx: Making, job: Job): Department | undefined {
+    if (job.department) return departmentOf(job.department);
     const { share, painters } = ctx.config.departments.d;
     // 偽のAIは絵を頼む企画を書けない。
     if (!(share > 0) || !painters.length || ctx.provider.name === "fake") return undefined;
     if (createRandom(job.seed ^ 0xd0d0)() >= share) return undefined;
-    ctx.log.line(`${job.id}: D部門（一枚絵）に当たった`);
-    return formOf("d");
+    const d = departmentOf("d");
+    if (!d || (job.form && d.skipForms.includes(job.form))) return undefined;
+    ctx.log.line(`${job.id}: ${d.label}に当たった`);
+    return d;
 }
 
 /**
@@ -273,7 +283,7 @@ async function check(ctx: Making, job: Job): Promise<void> {
     // 偽のAIは実例をそのまま返すので、そのときは見比べない。
     const form = formOf(job.form).id;
     const references = ctx.provider.name === "fake" ? [] : [
-        { label: `実例（${isDepartment(form) ? "departments" : "templates"}/${form}/work.ts）`, source: template(form) },
+        { label: `実例（templates/${form}/work.ts）`, source: template(form) },
         ...ctx.archive.sources(form, 3)
     ];
     ctx.log.line(`${job.id}: 試行${attempt.n} を検査する`);

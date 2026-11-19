@@ -29,6 +29,7 @@ import { assemble } from "../publish/site.js";
 import { decide, UNKNOWN_COST_RATIO, type SchedulerDecision } from "../scheduler/scheduler.js";
 import { acquire } from "./lock.js";
 import { takeRequest } from "./request.js";
+import { applyWish, type Wish } from "../jobs/wish.js";
 import { clock, Log, logPath } from "./log.js";
 import { COLOR, Notifier, type Embed } from "./notify.js";
 import { StateStore, statePath } from "./state.js";
@@ -60,8 +61,10 @@ export interface LoopOptions {
     readonly once?: boolean;
     /** 今回だけ頼む相手を指す（makenow --provider）。事業者の名前かモデル名。 */
     readonly provider?: string;
-    /** 今回だけ作る型を指す（makenow --form）。型か部門の名前。 */
+    /** 今回だけ作る型を指す（makenow --form）。 */
     readonly form?: string;
+    /** 今回だけ部門を指す（makenow --department）。 */
+    readonly department?: string;
 }
 
 const sleep = (ms: number) => new Promise(done => setTimeout(done, ms));
@@ -187,7 +190,9 @@ export async function runLoop(options: LoopOptions): Promise<number> {
                 setPhase("making");
                 // 始めた時刻を先に書く。作っている途中で落ちても、次の間隔はここから数える。
                 store.change(s => { s.lastAttemptAt = new Date().toISOString(); });
-                await makeOne(asked?.provider ?? options.provider, asked?.form ?? options.form);
+                await makeOne(asked?.provider ?? options.provider, asked
+                    ? { form: asked.form, department: asked.department }
+                    : { form: options.form, department: options.department });
             }
 
             // 送っていない採用作があれば、すぐ送る。送れなかったら間を置いて送り直す。
@@ -232,19 +237,12 @@ export async function runLoop(options: LoopOptions): Promise<number> {
 
     /**
      * 一作品つくる。中断していたジョブがあればその続きから。
-     * 相手を指されていれば、その札だけの札束から引かせる。型を指されていれば、
-     * 企画がまだのジョブにだけ当てる（企画済みなら、その型のまま続ける）。
+     * 相手を指されていれば、その札だけの札束から引かせる。型や部門を指されていれば、
+     * 企画がまだのジョブにだけ当てる（企画済みなら、そのまま続ける。jobs/wish.ts）。
      */
-    async function makeOne(wanted?: string, form?: string): Promise<void> {
+    async function makeOne(wanted?: string, wish: Wish = {}): Promise<void> {
         const job = jobs.unfinished()[0] ?? jobs.create();
-        if (form) {
-            if (job.plan) log.line(`${job.id} は企画済みなので、型の指定 ${form} は効かない（型は ${job.form}）`);
-            else {
-                job.form = form;
-                jobs.save(job);
-                log.line(`${job.id}: 型を ${form} に指定された`);
-            }
-        }
+        applyWish(jobs, job, wish, line => log.line(line));
         let hand = deck;
         if (wanted) {
             const only = deckNamed(deck, wanted);

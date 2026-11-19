@@ -14,7 +14,7 @@
 
 import { formOf } from "./forms.js";
 import type { Plan } from "./planner.js";
-import { departments, season, type Axis } from "./season.js";
+import { departmentOf, season, type Axis } from "./season.js";
 
 export interface Twist {
     readonly axis: string;
@@ -45,13 +45,21 @@ function shuffled<T>(items: readonly T[], random: () => number): T[] {
 }
 
 /**
- * 今回の縛りを引く。型の札から2枚、共通の札から2枚。
+ * 今回の縛りを引く。型の札から2枚、共通の札から2枚。部門の作品なら、共通の札の
+ * 1枚を部門の札に替える（型2・部門1・共通1）。四枚のままにして、縛りすぎない。
  *
- * 同じ型の直近の作品で使った札は避ける。避けると何も残らない軸は、そのまま引く
- * （札束が尽きたときに企画が止まらないように）。
+ * 同じ型の直近の作品で使った札は避ける。部門の札は、同じ部門の直近の作品で使った
+ * ものを避ける。避けると何も残らない軸は、そのまま引く（札束が尽きたときに企画が
+ * 止まらないように）。
  */
-export function drawTwist(form: string, past: readonly Plan[], random: () => number): Twist[] {
+export function drawTwist(form: string, past: readonly Plan[], random: () => number, department?: string): Twist[] {
     const seen = used(past, form, 4);
+    const outside = departmentOf(department);
+    if (outside) {
+        for (const plan of past.filter(p => p.department === outside.id).slice(0, 4)) {
+            for (const t of plan.twist ?? []) seen.add(`${t.axis}: ${t.option}`);
+        }
+    }
     const draw = (axes: readonly Axis[], count: number): Twist[] => {
         return shuffled(axes, random).slice(0, count).map(axis => {
             const fresh = axis.options.filter(o => !seen.has(`${axis.name}: ${o}`));
@@ -61,12 +69,12 @@ export function drawTwist(form: string, past: readonly Plan[], random: () => num
     };
     // 型の作法とぶつかる共通の札は、その型には引かない（キャラクタ画面にはビットマップの
     // モードも、描き足しも無い）。どれを外すかは templates/<型>/twists.json の skipCommon。
-    // 部門（departments/）の札も同じ形で持っている。
     const { common, byForm, skipCommon } = season();
-    const outside = departments();
-    const own = byForm[form] ?? outside.byForm[form] ?? [];
-    const skip = skipCommon[form] ?? outside.skipCommon[form] ?? [];
-    return [...draw(own, 2), ...draw(common.filter(axis => !skip.includes(axis.name)), 2)];
+    const skip = [...(skipCommon[form] ?? []), ...(outside?.skipCommon ?? [])];
+    const commons = common.filter(axis => !skip.includes(axis.name));
+    return outside
+        ? [...draw(byForm[form] ?? [], 2), ...draw(outside.axes, 1), ...draw(commons, 1)]
+        : [...draw(byForm[form] ?? [], 2), ...draw(commons, 2)];
 }
 
 /** 企画の頼みに入れる文。 */

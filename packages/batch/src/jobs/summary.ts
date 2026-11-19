@@ -5,6 +5,7 @@
 // 何回試し、いくらかかり、どうなったかを一か所にまとめて書く。
 
 import { formOf } from "../plan/forms.js";
+import { departmentOf } from "../plan/season.js";
 import type { Job } from "./job.js";
 
 export interface JobFacts {
@@ -32,7 +33,7 @@ export function facts(job: Job): JobFacts {
         title: plan?.title,
         pitch: plan?.pitch,
         subject: plan?.subject,
-        form: formOf(job.form).label,
+        form: departmentOf(job.department) ? `${formOf(job.form).label}・${departmentOf(job.department)!.label}` : formOf(job.form).label,
         twist: plan?.twist?.length ? plan.twist.map(t => `${t.axis}=${t.option}`).join(" / ") : undefined,
         author: job.persona?.penName,
         model: job.model,

@@ -5,7 +5,7 @@
 // 同じドット面から取り出した字を並べるラスタライザを差す（typeset.ts）。
 //
 // 同梱の絵（env.images）を渡したときは、その使われ方も数える（ImageUse）。
-// 絵を同梱した作品が絵を画面に出していないなら、それは一枚絵の作品ではない。
+// 絵を同梱した作品が絵を画面に出していないなら、それは D部門の作品になっていない。
 
 import { BUTTON, boot } from "fantasy-msx";
 import { readFrame, type Image } from "fantasy-msx/tools/capture.js";

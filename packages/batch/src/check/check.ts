@@ -160,7 +160,7 @@ function judgeImages(names: readonly string[], use: ImageUse | undefined): strin
     if (!names.length || !use) return [];
     const problems = names
         .filter(name => !use.reduced.includes(name))
-        .map(name => `env.images.${name} を一度も ctx.image.reduce に渡していない。同梱した絵は画面に出す（型の手引きの「絵を使う」）。`);
+        .map(name => `env.images.${name} を一度も ctx.image.reduce に渡していない。同梱した絵は画面に出す（D部門の手引きの「絵を使う」）。`);
     if (use.reduced.length && use.drawnPixels === 0) {
         problems.push("絵を減色したが、画面に置いていない。reduce の結果を ctx.image.drawNow（または draw）に渡す。");
     }

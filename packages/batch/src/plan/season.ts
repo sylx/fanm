@@ -134,52 +134,78 @@ export function season(): Season {
 
 // --- 部門 -------------------------------------------------------------------
 //
-// シーズンの外に常設する作品の種類（departments/<id>/）。中身は型と同じ四つの
-// ファイル（form.md、work.ts、meta.json、twists.json）で、型と同じように名前で
-// 引ける（plan/forms.ts の formOf）。違うのは二つ。
+// シーズンの外に常設する部門（departments/<id>/）。部門は型と並ぶものではなく、型に
+// 掛け合わせる印で、D部門なら「どの型の作品にも、描かせた絵を同梱する」。型は
+// いつもどおりシーズンから選び、部門の手引き（guide.md）と札（twists.json）を足す。
 //
-//   - pickForm は部門を選ばない。部門の作品をどれだけ作るかは設定の割合で決める
-//     （config の departments、jobs/make.ts）。
-//   - 月次の作り変えは触らない。共通の札（season.json の common）の顔ぶれは月ごとに
-//     変わるので、skipCommon に今の common に無い名前があっても咎めない。
+//     departments/departments.json   部門の一覧。名前、呼び名、組めない型（skipForms）
+//     departments/<id>/guide.md      型の手引きに足す手引き
+//     departments/<id>/twists.json   部門の札と、その部門には引かない共通の札
+//     departments/<id>/work.ts       部門の実例（結線確認用。生成には型の実例を渡す）
+//     departments/<id>/meta.json     実例の説明
+//
+// 部門の作品をどれだけ作るかは設定の割合で決める（config の departments、jobs/make.ts）。
+// 月次の作り変えは触らない。型と共通の札の顔ぶれは月ごとに変わるので、skipForms と
+// skipCommon に今のシーズンに無い名前があっても咎めない。
 
-export interface Departments {
-    readonly forms: readonly Form[];
-    /** 部門ごとの札。 */
-    readonly byForm: Readonly<Record<string, readonly Axis[]>>;
-    /** その部門には引かない共通の札（軸の名前）。 */
-    readonly skipCommon: Readonly<Record<string, readonly string[]>>;
+export interface Department {
+    /** departments/<id>/ の名前であり、作品と企画に残る名前。 */
+    readonly id: string;
+    /** 呼び名。ギャラリーと過去作品の一覧に出す（「D部門」）。 */
+    readonly label: string;
+    /** この部門と組めない型。D部門なら、絵を置く場所の無いキャラクタ画面。 */
+    readonly skipForms: readonly string[];
+    /** 部門の札。 */
+    readonly axes: readonly Axis[];
+    /** この部門には引かない共通の札（軸の名前）。 */
+    readonly skipCommon: readonly string[];
+}
+
+function names(raw: unknown, where: string): string[] {
+    if (raw === undefined) return [];
+    if (!Array.isArray(raw) || raw.some(s => typeof s !== "string")) throw new Error(`${where} は名前の配列にする`);
+    return raw as string[];
 }
 
 /** 部門を読んで確かめる。部門が無ければ空。 */
-export function readDepartments(dir = DEPARTMENTS): Departments {
+export function readDepartments(dir = DEPARTMENTS): Department[] {
     const path = join(dir, "departments.json");
-    if (!existsSync(path)) return { forms: [], byForm: {}, skipCommon: {} };
-    const list = forms((json(path) as { departments?: unknown }).departments, `${path}: departments`);
-    const byForm: Record<string, readonly Axis[]> = {};
-    const skipCommon: Record<string, readonly string[]> = {};
-    for (const form of list) {
-        for (const file of ["form.md", "work.ts", "meta.json", "twists.json"]) {
-            if (!existsSync(join(dir, form.id, file))) throw new Error(`departments/${form.id}/${file} がない`);
+    if (!existsSync(path)) return [];
+    const list = (json(path) as { departments?: unknown }).departments;
+    if (!Array.isArray(list)) throw new Error(`${path}: departments が配列でない`);
+    return list.map((raw, i) => {
+        const { id, label, skipForms } = (raw ?? {}) as Record<string, unknown>;
+        const where = `${path}: departments[${i}]`;
+        if (typeof id !== "string" || !/^[a-z][a-z0-9-]*$/.test(id)) throw new Error(`${where}.id は英小文字・数字・ハイフンの名前にする`);
+        if (typeof label !== "string" || !label.trim()) throw new Error(`${where}.label がない`);
+        for (const file of ["guide.md", "work.ts", "meta.json", "twists.json"]) {
+            if (!existsSync(join(dir, id, file))) throw new Error(`departments/${id}/${file} がない`);
         }
-        const twistPath = join(dir, form.id, "twists.json");
+        const twistPath = join(dir, id, "twists.json");
         const twists = json(twistPath) as { axes?: unknown; skipCommon?: unknown };
-        byForm[form.id] = axes(twists.axes, `${twistPath}: axes`);
-        if (byForm[form.id].length < 2) throw new Error(`${twistPath}: 軸は二つ以上にする（毎回二枚引く）`);
-        const skip = twists.skipCommon ?? [];
-        if (!Array.isArray(skip) || skip.some(s => typeof s !== "string")) throw new Error(`${twistPath}: skipCommon は軸の名前の配列にする`);
-        skipCommon[form.id] = skip as string[];
-    }
-    return { forms: list, byForm, skipCommon };
+        const own = axes(twists.axes, `${twistPath}: axes`);
+        if (!own.length) throw new Error(`${twistPath}: 軸が一つもない`);
+        return {
+            id, label,
+            skipForms: names(skipForms, `${where}.skipForms`),
+            axes: own,
+            skipCommon: names(twists.skipCommon, `${twistPath}: skipCommon`)
+        };
+    });
 }
 
-let cachedDepartments: Departments | undefined;
+let cachedDepartments: Department[] | undefined;
 
-export function departments(): Departments {
+export function departments(): readonly Department[] {
     return cachedDepartments ??= readDepartments();
 }
 
-/** 型か部門の手引き・実例のあるディレクトリ。 */
-export function formDir(id: string): string {
-    return departments().forms.some(f => f.id === id) ? join(DEPARTMENTS, id) : join(TEMPLATES, id);
+/** 名前から部門を引く。無ければ undefined。 */
+export function departmentOf(id: string | undefined): Department | undefined {
+    return id ? departments().find(d => d.id === id) : undefined;
+}
+
+/** 部門の手引き。departments/<id>/guide.md。 */
+export function departmentGuide(id: string): string {
+    return readFileSync(join(DEPARTMENTS, id, "guide.md"), "utf8").trim();
 }

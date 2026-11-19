@@ -2,14 +2,14 @@
 // バッチ処理の入口。
 //
 //     fanm run [--once]         常駐して制作を回し続ける。本番（Coolify）はこれを動かす
-//     fanm make [--fake] [--form <型>]
+//     fanm make [--fake] [--form <型>] [--department <部門>]
 //                               ジョブを一つ最後まで進める。途中のジョブがあればその続きから。
 //                               --form は型を指定する（手元で一つの型を試すとき用。本番は指定しない）。
-//                               部門も指せる（--form d で D部門の一枚絵）
-//     fanm makenow [--local] [--provider <名前>] [--form <型>]
+//                               --department は部門を指定する（--department d で D部門。型と掛け合わせる）
+//     fanm makenow [--local] [--provider <名前>] [--form <型>] [--department <部門>]
 //                               次の間隔を待たずに一作品つくって公開する。常駐が動いていれば横から頼む。
 //                               --provider は今回だけ頼む相手を指す（事業者の名前かモデル名）。
-//                               --form は今回だけ作る型を指す（--form d で D部門の一枚絵）
+//                               --form は今回だけ作る型を、--department は部門を指す（--department d で D部門）
 //     fanm check <dir>...       work.ts と meta.json のあるディレクトリを検査する（AIは呼ばない）
 //     fanm check --templates    いまのシーズン（templates/season.json）を確かめ、使う型の実例をすべて検査する
 //     fanm overlap              採用作が実例や過去作をどれだけ写しているかを並べる（AIは呼ばない）
@@ -45,7 +45,8 @@ import { summary } from "./jobs/summary.js";
 import { createPainter, paintPicture } from "./paint/paint.js";
 import { preview } from "./paint/preview.js";
 import { activeForms, formOf } from "./plan/forms.js";
-import { DEPARTMENTS, departments, readDepartments, season, TEMPLATES } from "./plan/season.js";
+import { DEPARTMENTS, departmentOf, departments, readDepartments, season, TEMPLATES } from "./plan/season.js";
+import { applyWish, type Wish } from "./jobs/wish.js";
 import { template } from "./prompts.js";
 import { deckBrief, deckNamed, FAKE_DECK, verifyDeck } from "./providers/deck.js";
 import { fetchPlays } from "./publish/plays.js";
@@ -97,13 +98,23 @@ function wantedProvider(): string | undefined {
     return wanted;
 }
 
-/** `--form` の指定。いまの型か部門でなければ、頼む前にここで止める。 */
-function wantedForm(): string | undefined {
-    const wanted = flag("form");
-    if (!wanted) return undefined;
-    const known = [...activeForms(), ...departments().forms].map(f => f.id);
-    if (!known.includes(wanted)) throw new Error(`型 ${wanted} はない。あるのは ${known.join(", ")}`);
-    return wanted;
+/**
+ * `--form` と `--department` の指定。いまの型・部門に無い名前や、組めない組み合わせ
+ * （D部門とキャラクタ画面）は、頼む前にここで止める。
+ */
+function wantedWish(): Wish {
+    const form = flag("form");
+    const department = flag("department");
+    if (form) {
+        const known = activeForms().map(f => f.id);
+        if (!known.includes(form)) throw new Error(`型 ${form} はない。あるのは ${known.join(", ")}`);
+    }
+    if (department) {
+        const outside = departmentOf(department);
+        if (!outside) throw new Error(`部門 ${department} はない。あるのは ${departments().map(d => d.id).join(", ") || "（なし）"}`);
+        if (form && outside.skipForms.includes(form)) throw new Error(`${outside.label}は型 ${form} と組めない（departments/departments.json の skipForms）`);
+    }
+    return { form, department };
 }
 
 async function runMake(): Promise<number> {
@@ -125,16 +136,8 @@ async function runMake(): Promise<number> {
     verifyDeck(deck);
     const jobs = new JobStore(join(root, "jobs"));
     const job = jobs.unfinished()[0] ?? jobs.create();
-    // 手元で一つの型を試すための指定。企画が済んでいないジョブにだけ効く。
-    const wanted = wantedForm();
-    if (wanted) {
-        if (job.plan) log.line(`${job.id} は企画済みなので --form は効かない（型は ${job.form}）`);
-        else {
-            job.form = wanted;
-            jobs.save(job);
-            log.line(`型を ${wanted} に指定した`);
-        }
-    }
+    // 手元で一つの型・部門を試すための指定。企画が済んでいないジョブにだけ効く。
+    applyWish(jobs, job, wantedWish(), line => log.line(line));
     log.line(`${job.id}: ${job.state} から開始${fake ? "（偽のAI）" : `（札束は ${deckBrief(deck)}）`}`);
     try {
         const archive = new Archive(join(root, "works"));
@@ -183,14 +186,14 @@ async function watchRequest(): Promise<string> {
 async function runMakeNow(local: boolean): Promise<number> {
     mkdirSync(root, { recursive: true });
     const provider = wantedProvider();
-    const form = wantedForm();
+    const { form, department } = wantedWish();
     const running = isRunning(root);
     if (running) {
         if (readState(root).beat?.phase === "making") {
             console.log("いま別の作品を作っている。それが終わってから、続けてもう一作品つくる。");
         }
-        askNow(root, { provider, form });
-        const wish = [provider && `相手は ${provider}`, form && `型は ${form}`].filter(Boolean).join("、");
+        askNow(root, { provider, form, department });
+        const wish = [provider && `相手は ${provider}`, form && `型は ${form}`, department && `部門は ${department}`].filter(Boolean).join("、");
         console.log(`常駐（pid ${running.pid}）に「いま作れ」と頼んだ${wish ? `（${wish}）` : ""}。30秒以内に始まる。Ctrl-C で見るのをやめても、制作は続く。`);
         const phase = await watchRequest();
         if (asked(root) === null) {
@@ -202,11 +205,11 @@ async function runMakeNow(local: boolean): Promise<number> {
         takeRequest(root);
         console.log("頼みを受け取る常駐がいなかった。ここで作る。");
     }
-    return await runLoop({ config, root, fake, deck: fixedDeck, publisher: publisher(local), once: true, provider, form });
+    return await runLoop({ config, root, fake, deck: fixedDeck, publisher: publisher(local), once: true, provider, form, department });
 }
 
 /** 値を取る旗。これらの次の語は、旗の値であって位置引数ではない。 */
-const VALUED = new Set(["--name", "--aspect", "--model", "--out", "--provider", "--form", "--days"]);
+const VALUED = new Set(["--name", "--aspect", "--model", "--out", "--provider", "--form", "--department", "--days"]);
 
 /** 旗とその値を除いた引数。 */
 function positional(): string[] {
@@ -377,8 +380,8 @@ switch (command) {
             dirs.push(...now.forms.map(f => join(TEMPLATES, f.id)));
             // シーズンの外の部門（departments/）も、読めることを確かめてから実例を動かして撮る。
             const outside = readDepartments();
-            if (outside.forms.length) console.log(`部門: ${outside.forms.map(f => `${f.id}（${f.label}）`).join(", ")}`);
-            dirs.push(...outside.forms.map(f => join(DEPARTMENTS, f.id)));
+            if (outside.length) console.log(`部門: ${outside.map(d => `${d.id}（${d.label}、組めない型: ${d.skipForms.join(", ") || "なし"}）`).join(", ")}`);
+            dirs.push(...outside.map(d => join(DEPARTMENTS, d.id)));
         }
         if (!dirs.length) throw new Error("usage: fanm check <dir>... | fanm check --templates");
         let failed = 0;
@@ -429,6 +432,6 @@ switch (command) {
         break;
     }
     default:
-        console.error("usage: fanm run [--once] | make [--fake] [--form <型>] | makenow [--local] [--provider <名前>] [--form <型>] | check <dir> | overlap | status | publish [--local] | remove <id>... [--local] | paint <絵> | budget | plays [--days <n>]");
+        console.error("usage: fanm run [--once] | make [--fake] [--form <型>] [--department <部門>] | makenow [--local] [--provider <名前>] [--form <型>] [--department <部門>] | check <dir> | overlap | status | publish [--local] | remove <id>... [--local] | paint <絵> | budget | plays [--days <n>]");
         process.exitCode = 2;
 }

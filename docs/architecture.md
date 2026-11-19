@@ -76,12 +76,21 @@ fanM/
 
 ### 部門（シーズンの外）
 
-`departments/` には、シーズンの外に常設する作品の種類を置く。いまは D部門（一枚絵、`departments/d/`）だけ。中身は型と同じ四つのファイル（`form.md`、`work.ts`、`meta.json`、`twists.json`）で、一覧は `departments/departments.json`。
+`departments/` には、シーズンの外に常設する**部門**を置く。部門は型と並ぶものではなく、型に掛け合わせる印。いまは D部門（`departments/d/`）だけで、「どの型の作品にも、描かせた絵を同梱する」。だから「D部門のアドベンチャー」「D部門の詩」がある。
 
-- 名前で引けば型と同じに扱える（`formOf("d")`、`formBrief`、`template`、縛り）。違うのは選ばれ方で、`pickForm` は部門を選ばない。D部門になるかは `fanm.json` の `departments.d.share` の割合で、ジョブの種から引く（`jobs/make.ts` の `department`）。
-- 月次の作り変えは触らない。共通の札（`season.json` の `common`）の顔ぶれは月ごとに変わるので、部門の `skipCommon` に今の `common` に無い名前があっても咎めない。
+```text
+departments/departments.json   部門の一覧。名前、呼び名（「D部門」）、組めない型（skipForms）
+departments/d/guide.md         型の手引き（templates/<型>/form.md）のあとに足す手引き。絵の頼み方と使い方
+departments/d/twists.json      部門の札と、その部門には引かない共通の札（skipCommon）
+departments/d/work.ts          部門の実例。結線確認（check --templates）用で、生成には型の実例を渡す
+```
+
+- ジョブは型（`job.form`）と部門（`job.department`）を別に持つ。部門が先に決まる（`fanm.json` の `departments.d.share` の割合でジョブの種から引くか、`--department d` の指定）。D部門なら、組めない型（キャラクタ画面。絵を置くビットマップが無い）を除いてから `pickForm` が型を選ぶ。
+- 企画と生成には、型の手引きのあとに部門の手引きを足して渡す（`prompts.ts` の `formBrief`）。実例は型のもの。縛りは型から2枚、部門から1枚、共通から1枚（`plan/variations.ts`）。
+- 企画（`plan.json`）と作品（`meta.json`）に `department` が残る。過去作品の一覧には「[環境デモ・D部門]」のように出る。
+- 月次の作り変えは触らない。型と共通の札の顔ぶれは月ごとに変わるので、`skipForms` と `skipCommon` に今のシーズンに無い名前があっても咎めない。新しい型がキャラクタ画面（G1〜G3）だけで作るものなら、`skipForms` に足す。
 - D部門のジョブだけ「描く」段を通る。企画が `pictures`（描かせる絵、1〜2枚）を書き、`paint/` が描き手に描かせてジョブの `images/` に置き、試行ごとに写す。生成の頼みには、描き手に渡した文と、その絵から `image.palette` が選ぶ16色の表を入れる（`paint/brief.ts`）。コードを書く相手は絵を見られないので、どこに何があるかは文から、どの色が何番かは表から知る。
-- 画像の API（`ctx.image`）は全ジョブ共通の `api.md` には入れず、D部門の `form.md` に要るだけ書いた。system の先頭を揃えてキャッシュを効かせるため。
+- 画像の API（`ctx.image`）は全ジョブ共通の `api.md` には入れず、D部門の `guide.md` に要るだけ書いた。system の先頭を揃えてキャッシュを効かせるため。
 
 ### シーズンの作り変え
 

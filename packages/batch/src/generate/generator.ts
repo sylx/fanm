@@ -37,7 +37,7 @@ export function generateRequest(
         {
             role: "user",
             content: fill(prompt("generate.md"), {
-                form: formBrief(formOf(plan.form).id),
+                form: formBrief(formOf(plan.form).id, plan.department),
                 plan: JSON.stringify(plan, null, 2),
                 persona: personaPrompt(persona),
                 // 実例はデータを抜いて渡す。そのまま渡すと写しが返ってくる。

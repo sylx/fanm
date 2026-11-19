@@ -7,7 +7,8 @@ import type { Aspect } from "../providers/painter.js";
 import type { CompletionRequest } from "../providers/provider.js";
 import { personaPrompt, type Persona } from "../persona/persona.js";
 import { fill, formBrief, prompt, system } from "../prompts.js";
-import { formOf, isDepartment, type Form } from "./forms.js";
+import { formOf, type Form } from "./forms.js";
+import { departmentOf } from "./season.js";
 import { season } from "./season.js";
 import { twistBrief, type Twist } from "./variations.js";
 
@@ -30,13 +31,15 @@ export interface Plan {
     readonly durationFrames: number;
     /** 企画したときのシーズン（templates/season.json）。型と札を作り変えた効き目を、あとで比べるため。 */
     readonly season?: string;
+    /** 部門（departments/）の作品なら、その名前（"d"）。型に掛け合わせる印で、バッチが決める。 */
+    readonly department?: string;
     /** 描かせる絵（D部門だけ）。企画が書き、描く段（paint/）が描いて作品に同梱する。 */
     readonly pictures?: readonly Picture[];
 }
 
-/** 絵を頼む型か。いまは部門（D部門、一枚絵）だけ。 */
-export function wantsPictures(form: string | undefined): boolean {
-    return isDepartment(form);
+/** 絵を頼む部門か。いまは D部門だけ。 */
+export function wantsPictures(department: string | undefined): boolean {
+    return department === "d";
 }
 
 /** 一作品に頼む絵の数の上限。一枚 30 秒ほどかかり、作品の容量にもなる。 */
@@ -46,7 +49,7 @@ const ASPECTS: readonly Aspect[] = ["4:3", "1:1", "3:4", "16:9"];
 
 /** 企画の pictures を読む。読めなければ、企画を頼み直す理由を投げる。 */
 function parsePictures(raw: unknown): Picture[] {
-    if (!Array.isArray(raw) || !raw.length) throw new Error("企画に pictures がない（一枚絵の型は絵を1〜2枚頼む）");
+    if (!Array.isArray(raw) || !raw.length) throw new Error("企画に pictures がない（D部門の作品は絵を1〜2枚頼む）");
     if (raw.length > MAX_PICTURES) throw new Error(`pictures が ${raw.length} 枚ある（${MAX_PICTURES} 枚まで）`);
     const seen = new Set<string>();
     return raw.map((p, i) => {
@@ -62,22 +65,28 @@ function parsePictures(raw: unknown): Picture[] {
 }
 
 /** 企画の頼みの「条件」に入れる、素材の決まり。 */
-function assetsRule(form: string): string {
-    return wantsPictures(form)
+function assetsRule(department: string | undefined): string {
+    return wantsPictures(department)
         ? "- 絵は企画の `pictures` で頼んだものが描かれて同梱される。それ以外の画像・音声ファイルや外部サービスは使えない。音は MML と PSG / FM 音源で作る。"
         : "- 画像・音声ファイルや外部サービスは使えない。絵は描画命令と点の配列、音は MML と PSG / FM 音源で作る。";
 }
 
 /** 企画の頼みの「出力」に足す一文。 */
-function picturesRule(form: string): string {
-    return wantsPictures(form)
-        ? "一枚絵の型なので、この JSON に `pictures`（描かせる絵、1〜2枚）も足してください。書き方は型の手引きの「絵を頼む」にあります。"
+function picturesRule(department: string | undefined): string {
+    return wantsPictures(department)
+        ? "D部門の作品なので、この JSON に `pictures`（描かせる絵、1〜2枚）も足してください。書き方は型の手引きのあとの「この作品はD部門」の「絵を頼む」にあります。"
         : "";
+}
+
+/** 過去作品一覧の角括弧。型と、部門の作品なら部門（「環境デモ・D部門」）。 */
+function kind(plan: Plan): string {
+    const outside = departmentOf(plan.department);
+    return outside ? `${formOf(plan.form).label}・${outside.label}` : formOf(plan.form).label;
 }
 
 /** 過去作品一覧の一行。型も見せる。同じ型の中でも違うものを作らせるため。 */
 export function summarize(plan: Plan): string {
-    return `- [${formOf(plan.form).label}] ${plan.title}: 題材=${plan.subject} / 動き=${plan.motion}`
+    return `- [${kind(plan)}] ${plan.title}: 題材=${plan.subject} / 動き=${plan.motion}`
         + ` / 構図=${plan.composition} / 音=${plan.sound}`
         + (plan.structure ? ` / 段取り=${plan.structure}` : "")
         + ` / 機能=${plan.msxFeatures.join(",")}`;
@@ -85,7 +94,7 @@ export function summarize(plan: Plan): string {
 
 /** 古い過去作の一行。題と題材だけ。 */
 function summarizeBriefly(plan: Plan): string {
-    return `- [${formOf(plan.form).label}] ${plan.title}: 題材=${plan.subject}`;
+    return `- [${kind(plan)}] ${plan.title}: 題材=${plan.subject}`;
 }
 
 /**
@@ -149,6 +158,8 @@ export function planRequest(
     twist: readonly Twist[],
     /** 作り手。性格を持たせる前のジョブには無い。 */
     persona: Persona | undefined,
+    /** 部門の作品なら、その名前。型の手引きに部門の手引きを足し、絵を頼ませる。 */
+    department: string | undefined,
     maxOutputTokens: number,
     /**
      * 企画は散らしたいが、上げすぎると日本語が壊れる。実測（DeepSeek V4 Pro、2026-09）:
@@ -161,11 +172,11 @@ export function planRequest(
     const content = fill(prompt("plan.md"), {
         past: pastBrief(past),
         worn: wornBrief(wornWords(past)),
-        form: formBrief(form.id),
+        form: formBrief(form.id, department),
         twist: twistBrief(twist),
         persona: personaPrompt(persona),
-        assets: assetsRule(form.id),
-        pictures: picturesRule(form.id)
+        assets: assetsRule(department),
+        pictures: picturesRule(department)
     }).replace(/\n{3,}/g, "\n\n").trim();
     return {
         messages: [system(), { role: "user", content }],
@@ -177,7 +188,7 @@ export function planRequest(
 }
 
 /** 型はAIに選ばせない。渡されたものをそのまま企画に入れる。 */
-export function parsePlan(text: string, form: Form, twist: readonly Twist[] = []): Plan {
+export function parsePlan(text: string, form: Form, twist: readonly Twist[] = [], department?: string): Plan {
     const raw = JSON.parse(text) as Partial<Plan>;
     const str = (key: keyof Plan) => {
         const value = raw[key];
@@ -198,6 +209,7 @@ export function parsePlan(text: string, form: Form, twist: readonly Twist[] = []
         interactive: raw.interactive === true,
         durationFrames: Number(raw.durationFrames) || 2400,
         season: season().season,
-        ...(wantsPictures(form.id) ? { pictures: parsePictures(raw.pictures) } : {})
+        ...(department ? { department } : {}),
+        ...(wantsPictures(department) ? { pictures: parsePictures(raw.pictures) } : {})
     };
 }

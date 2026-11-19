@@ -33,6 +33,11 @@ export interface Job {
     readonly seed: number;
     /** 作品の型。企画の前に決まり、やり直しても変わらない。 */
     form?: string;
+    /**
+     * 部門（departments/）。型に掛け合わせる印で、D部門なら絵を同梱する。型より先に
+     * 決まり（設定の割合か、--department の指定）、やり直しても変わらない。
+     */
+    department?: string;
     /** 頼む相手のモデル名。型と同じく企画の前に引き、やり直しても変わらない。 */
     model?: string;
     /** 作り手の性格とペンネーム。相手と一緒に引き、相手を引き直したら引き直す。 */

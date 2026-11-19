@@ -71,7 +71,7 @@ export interface Config {
      * 部門に当たらなかったジョブは、いつものようにシーズンの型から選ぶ。
      */
     readonly departments: {
-        /** D部門（一枚絵）。描き手に絵を描かせ、作品に同梱する。 */
+        /** D部門。どの型の作品にも、描き手に描かせた絵を同梱する。 */
         readonly d: {
             /** 一作品が D部門になる割合（0〜1）。0 なら作らない。 */
             readonly share: number;
