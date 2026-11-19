@@ -1,19 +1,25 @@
 // 一つのジョブを、保存された状態から最後まで進める。
 //
-//     企画 → 生成 → 検査 → (修正 → 検査)×最大 maxRepairs → 採用 | 不採用
+//     企画 → (描く →) 生成 → 検査 → (修正 → 検査)×最大 maxRepairs → 採用 | 不採用
+//
+// 描くのは D部門（一枚絵）の作品だけ。企画が頼んだ絵を描き手に描かせ、ジョブの
+// images/ に置く。試行ごとにそれを写し、作品に同梱して検査する。
 //
 // どの段階で止まっても、次に呼べば続きから進む。作品単位の予算を超えたら
 // 不採用。月の予算を超えたら BudgetExceeded をそのまま投げ、ジョブは残す。
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createRandom } from "@fanm/work";
 import type { Archive } from "../archive/archive.js";
 import { BudgetExceeded, type Ledger } from "../budget/ledger.js";
 import { checkWork, type CheckReport } from "../check/check.js";
+import { IMAGES_DIR } from "../check/images.js";
 import type { Config, ProviderConfig } from "../config.js";
 import { FormatError, generateRequest, parseFiles, type PastAttempt } from "../generate/generator.js";
-import { formOf, pickForm } from "../plan/forms.js";
+import { picturesBrief } from "../paint/brief.js";
+import { createPainter, paintPicture } from "../paint/paint.js";
+import { formOf, isDepartment, pickForm, type Form } from "../plan/forms.js";
 import { penName } from "../persona/pen-name.js";
 import { drawTraits, personaBrief } from "../persona/persona.js";
 import { parsePlan, planRequest } from "../plan/planner.js";
@@ -104,6 +110,7 @@ export async function make(base: MakeContext, job: Job): Promise<Job> {
     try {
         while (job.state !== "accepted" && job.state !== "rejected") {
             if (job.state === "planning") await plan(ctx, job);
+            else if (job.state === "painting") await paint(ctx, job);
             else if (job.state === "generating") await generate(ctx, job);
             else await check(ctx, job);
             ctx.jobs.save(job);
@@ -133,8 +140,9 @@ export async function make(base: MakeContext, job: Job): Promise<Job> {
 async function plan(ctx: Making, job: Job): Promise<void> {
     // 直近120作。詳しく見せるのは近い24作だけで、残りは題と題材（planner.ts の pastBrief）。
     const past = ctx.archive.plans(120);
-    // 型はAIに選ばせない。過去作に少ない型を当てる。同じジョブなら毎回同じ型。
-    const form = job.form ? formOf(job.form) : pickForm(past, createRandom(job.seed));
+    // 型はAIに選ばせない。部門（設定の割合）に当たらなければ、過去作に少ない型を当てる。
+    // 同じジョブなら毎回同じ型。
+    const form = job.form ? formOf(job.form) : department(ctx, job) ?? pickForm(past, createRandom(job.seed));
     job.form = form.id;
     // 縛りも引く。型が同じでも段取りが前と変わるように。ジョブの種から引くので、
     // 企画をやり直しても同じ縛りになる。
@@ -153,6 +161,48 @@ async function plan(ctx: Making, job: Job): Promise<void> {
         return;
     }
     ctx.log.line(`${job.id}: 企画「${job.plan.title}」（${form.label}） ${job.plan.pitch}`);
+    job.state = job.plan.pictures?.length ? "painting" : "generating";
+}
+
+/**
+ * 部門に当てるか。設定の割合（departments.d.share）で、ジョブの種から引く。
+ * 同じジョブは何度やり直しても同じ答えになる。
+ */
+function department(ctx: Making, job: Job): Form | undefined {
+    const { share, painters } = ctx.config.departments.d;
+    // 偽のAIは絵を頼む企画を書けない。
+    if (!(share > 0) || !painters.length || ctx.provider.name === "fake") return undefined;
+    if (createRandom(job.seed ^ 0xd0d0)() >= share) return undefined;
+    ctx.log.line(`${job.id}: D部門（一枚絵）に当たった`);
+    return formOf("d");
+}
+
+/**
+ * 企画が頼んだ絵を描かせ、ジョブの images/ に置く。描き終えた絵は描き直さない
+ * （途中で落ちて再開したら、残りだけ描く）。
+ *
+ * 描けなかったら不採用にする。描き手の枠切れ（limit）もここで受ける。外へ投げると、
+ * 書く相手の枠が尽きたと取り違えて、書く相手を休ませてしまう。人が直すしかない
+ * 失敗（認証切れなど）だけは外へ投げ、知らせてもらう。
+ */
+async function paint(ctx: Making, job: Job): Promise<void> {
+    const painter = createPainter(ctx.config.departments.d.painters[0]);
+    const dir = ctx.jobs.jobDir(job.id);
+    for (const picture of job.plan!.pictures ?? []) {
+        if (existsSync(join(dir, IMAGES_DIR, `${picture.name}.png`))) continue;
+        ctx.log.line(`${job.id}: 絵「${picture.name}」を ${painter.name}（${painter.model}）に描かせる: ${picture.prompt}`);
+        try {
+            const painted = await paintPicture(painter, ctx.ledger, job.id, picture, dir);
+            job.calls.push(painted.log);
+            ctx.jobs.save(job);
+            ctx.log.line(`${job.id}: 絵「${picture.name}」を描いた（${painted.seconds.toFixed(0)}秒、${painted.source.width}x${painted.source.height} → ${painted.width}x${painted.height}）`);
+        } catch (e) {
+            if (e instanceof ProviderError && e.fatal) throw e;
+            if (e instanceof BudgetExceeded) throw e;
+            reject(ctx, job, `絵「${picture.name}」を描けなかった: ${(e as Error).message}`);
+            return;
+        }
+    }
     job.state = "generating";
 }
 
@@ -182,7 +232,7 @@ async function generate(ctx: Making, job: Job): Promise<void> {
     const request = generateRequest(job.plan!, job.persona, pastAttempts(ctx, job), {
         maxOutputTokens: generation.generateMaxTokens,
         reasoningEffort: thinkingRanAway ? "none" : generation.reasoningEffort
-    });
+    }, picturesBrief(job.plan!.pictures, ctx.jobs.jobDir(job.id)));
     ctx.log.line(`${job.id}: 試行${n} の${n === 1 ? "生成" : "修正"}を ${ctx.provider.model} に頼む${thinkingRanAway ? "（思考なし）" : ""}`);
     const result = await call(ctx.provider, ctx.ledger, job.id, n === 1 ? "generate" : `repair-${n - 1}`, request, deltas(ctx.log));
     job.calls.push(result.log);
@@ -205,6 +255,9 @@ async function generate(ctx: Making, job: Job): Promise<void> {
         const files = parseFiles(result.text, result.truncated);
         writeFileSync(join(dir, "work.ts"), files.work);
         writeFileSync(join(dir, "meta.json"), JSON.stringify(files.meta, null, 2));
+        // 描いた絵を試行に写す。検査も作品庫も、作品のディレクトリの images/ を読む。
+        const images = join(ctx.jobs.jobDir(job.id), IMAGES_DIR);
+        if (existsSync(images)) cpSync(images, join(dir, IMAGES_DIR), { recursive: true });
         job.state = "checking";
         ctx.log.line(`${job.id}: 試行${n} を生成`);
     } catch (e) {
@@ -220,7 +273,7 @@ async function check(ctx: Making, job: Job): Promise<void> {
     // 偽のAIは実例をそのまま返すので、そのときは見比べない。
     const form = formOf(job.form).id;
     const references = ctx.provider.name === "fake" ? [] : [
-        { label: `実例（templates/${form}/work.ts）`, source: template(form) },
+        { label: `実例（${isDepartment(form) ? "departments" : "templates"}/${form}/work.ts）`, source: template(form) },
         ...ctx.archive.sources(form, 3)
     ];
     ctx.log.line(`${job.id}: 試行${attempt.n} を検査する`);

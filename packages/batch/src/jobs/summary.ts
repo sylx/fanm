@@ -49,6 +49,7 @@ const STATE: Record<string, string> = {
     accepted: "採用",
     rejected: "不採用",
     planning: "中断（企画）",
+    painting: "中断（描画）",
     generating: "中断（生成）",
     checking: "中断（検査）"
 };

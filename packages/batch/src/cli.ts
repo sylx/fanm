@@ -4,7 +4,8 @@
 //     fanm run [--once]         常駐して制作を回し続ける。本番（Coolify）はこれを動かす
 //     fanm make [--fake] [--form <型>]
 //                               ジョブを一つ最後まで進める。途中のジョブがあればその続きから。
-//                               --form は型を指定する（手元で一つの型を試すとき用。本番は指定しない）
+//                               --form は型を指定する（手元で一つの型を試すとき用。本番は指定しない）。
+//                               部門も指せる（--form d で D部門の一枚絵）
 //     fanm makenow [--local] [--provider <名前>]
 //                               次の間隔を待たずに一作品つくって公開する。常駐が動いていれば横から頼む。
 //                               --provider は今回だけ頼む相手を指す（事業者の名前かモデル名）
@@ -28,7 +29,7 @@
 //
 // --fake は APIキーなしで一周させる偽のAIを使う。予算台帳も別（<VAR>/fake/）。
 
-import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { decodePNG } from "fantasy-msx/tools/png.js";
 import { basename, join, resolve } from "node:path";
 import { Archive } from "./archive/archive.js";
@@ -43,7 +44,7 @@ import { summary } from "./jobs/summary.js";
 import { createPainter, paintPicture } from "./paint/paint.js";
 import { preview } from "./paint/preview.js";
 import { activeForms, formOf } from "./plan/forms.js";
-import { DEPARTMENTS, season, TEMPLATES } from "./plan/season.js";
+import { DEPARTMENTS, departments, readDepartments, season, TEMPLATES } from "./plan/season.js";
 import { template } from "./prompts.js";
 import { deckBrief, deckNamed, FAKE_DECK, verifyDeck } from "./providers/deck.js";
 import { fetchPlays } from "./publish/plays.js";
@@ -117,7 +118,8 @@ async function runMake(): Promise<number> {
     // 手元で一つの型を試すための指定。企画が済んでいないジョブにだけ効く。
     const wanted = flag("form");
     if (wanted) {
-        if (!activeForms().some(f => f.id === wanted)) throw new Error(`型 ${wanted} はない。あるのは ${activeForms().map(f => f.id).join(", ")}`);
+        const known = [...activeForms(), ...departments().forms].map(f => f.id);
+        if (!known.includes(wanted)) throw new Error(`型 ${wanted} はない。あるのは ${known.join(", ")}`);
         if (job.plan) log.line(`${job.id} は企画済みなので --form は効かない（型は ${job.form}）`);
         else {
             job.form = wanted;
@@ -363,10 +365,10 @@ switch (command) {
             const now = season();
             console.log(`シーズン ${now.season}: 型は ${now.forms.map(f => f.id).join(", ")}${now.retired.length ? `（休み: ${now.retired.map(f => f.id).join(", ")}）` : ""}`);
             dirs.push(...now.forms.map(f => join(TEMPLATES, f.id)));
-            // シーズンの外の部門の実例も、同じように動かして撮る。
-            if (existsSync(DEPARTMENTS)) {
-                dirs.push(...readdirSync(DEPARTMENTS).map(d => join(DEPARTMENTS, d)).filter(d => existsSync(join(d, "work.ts"))));
-            }
+            // シーズンの外の部門（departments/）も、読めることを確かめてから実例を動かして撮る。
+            const outside = readDepartments();
+            if (outside.forms.length) console.log(`部門: ${outside.forms.map(f => `${f.id}（${f.label}）`).join(", ")}`);
+            dirs.push(...outside.forms.map(f => join(DEPARTMENTS, f.id)));
         }
         if (!dirs.length) throw new Error("usage: fanm check <dir>... | fanm check --templates");
         let failed = 0;

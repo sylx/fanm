@@ -5,6 +5,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { DEFAULT_MAX_OVERLAP } from "./check/overlap.js";
+import type { PainterConfig } from "./paint/paint.js";
 
 // .env があれば読む。ここで読んでおけば、APIキーも FANM_VAR もファイルで渡せる。
 // 本番（Coolify）では環境変数が直接入るので .env は置かない。すでに環境にある値が優先。
@@ -65,6 +66,19 @@ export interface Config {
          */
         readonly reuse: number;
     };
+    /**
+     * シーズンの外に常設する部門（departments/）。どれだけ作るかをここで決める。
+     * 部門に当たらなかったジョブは、いつものようにシーズンの型から選ぶ。
+     */
+    readonly departments: {
+        /** D部門（一枚絵）。描き手に絵を描かせ、作品に同梱する。 */
+        readonly d: {
+            /** 一作品が D部門になる割合（0〜1）。0 なら作らない。 */
+            readonly share: number;
+            /** 描き手。いまは先頭の一人だけを使う。 */
+            readonly painters: readonly PainterConfig[];
+        };
+    };
     readonly publish: {
         /** 送り先。"none" なら <VAR>/site/ を組み立てるだけで、どこへも送らない。 */
         readonly target: "cloudflare" | "none";
@@ -93,6 +107,9 @@ export const DEFAULTS: Config = {
     // 性格を引くだけだと、同じ作り手が出るのは一モデル75人の中の偶然に任される。
     // 三作に一作ほどは顔なじみに書かせる。
     persona: { reuse: 0.3 },
+    // D部門は割合 0 で入れておき、本番で Codex が描けると確かめてから上げる（fanm paint）。
+    // 描き手は Codex。ChatGPT の定額の枠で描けるので、台帳に費用が載らない。
+    departments: { d: { share: 0, painters: [{ name: "codex", model: "gpt-6-luna" }] } },
     publish: {
         target: "cloudflare",
         wranglerConfig: "wrangler.jsonc",
@@ -129,6 +146,7 @@ export function loadConfig(path = CONFIG_PATH): Config {
         generation: { ...DEFAULTS.generation, ...user.generation },
         production: { ...DEFAULTS.production, ...user.production },
         persona: { ...DEFAULTS.persona, ...user.persona },
+        departments: { d: { ...DEFAULTS.departments.d, ...user.departments?.d } },
         publish: { ...DEFAULTS.publish, ...user.publish }
     };
 }

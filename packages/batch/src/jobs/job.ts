@@ -1,10 +1,13 @@
 // 制作ジョブ。一作品の試行を一つのジョブとし、<VAR>/jobs/<id>/ に保存する。
 // 状態を変えるたびに書き出すので、コンテナやホストが止まっても続きから再開できる。
 //
-//     planning → generating ⇄ checking → accepted | rejected
+//     planning → (painting →) generating ⇄ checking → accepted | rejected
+//
+// painting は絵を同梱する作品（D部門）だけ。描いた絵は images/ に置き、試行ごとに写す。
 //
 // <VAR>/jobs/<id>/
 //     job.json            このファイルの Job
+//     images/             描いた絵（D部門だけ）。<名前>.png
 //     attempt-1/          生成1回目: response.md（AIの応答そのまま）, work.ts, meta.json, report.json, check/
 //     attempt-2/          修正1回目 ...
 
@@ -14,7 +17,7 @@ import type { CallLog } from "../providers/call.js";
 import type { Persona } from "../persona/persona.js";
 import type { Plan } from "../plan/planner.js";
 
-export type JobState = "planning" | "generating" | "checking" | "accepted" | "rejected";
+export type JobState = "planning" | "painting" | "generating" | "checking" | "accepted" | "rejected";
 
 export interface Attempt {
     readonly n: number;

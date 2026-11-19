@@ -10,7 +10,7 @@
 // 新しい型は直近に一作も無いので、入れた直後はその型が続けて当たる。
 
 import type { Plan } from "./planner.js";
-import { season, type Form } from "./season.js";
+import { departments, season, type Form } from "./season.js";
 
 export type { Form };
 
@@ -20,12 +20,18 @@ export function activeForms(): readonly Form[] {
 }
 
 /**
- * 名前から型を引く。休ませた型も引ける（過去作の型として名前を出すため）。
+ * 名前から型を引く。休ませた型と部門（departments/）も引ける（過去作の型として名前を出すため）。
  * 型を記録する前の作品と、もう一覧に無い型は、最初の型として扱う。
  */
 export function formOf(id: string | undefined): Form {
     const { forms, retired } = season();
-    return forms.find(f => f.id === id) ?? retired.find(f => f.id === id) ?? forms[0];
+    return forms.find(f => f.id === id) ?? retired.find(f => f.id === id)
+        ?? departments().forms.find(f => f.id === id) ?? forms[0];
+}
+
+/** 部門（departments/）の作品か。部門は pickForm で選ばれず、設定の割合で当たる。 */
+export function isDepartment(id: string | undefined): boolean {
+    return departments().forms.some(f => f.id === id);
 }
 
 /**

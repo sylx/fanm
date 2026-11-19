@@ -131,3 +131,55 @@ let cached: Season | undefined;
 export function season(): Season {
     return cached ??= readSeason();
 }
+
+// --- 部門 -------------------------------------------------------------------
+//
+// シーズンの外に常設する作品の種類（departments/<id>/）。中身は型と同じ四つの
+// ファイル（form.md、work.ts、meta.json、twists.json）で、型と同じように名前で
+// 引ける（plan/forms.ts の formOf）。違うのは二つ。
+//
+//   - pickForm は部門を選ばない。部門の作品をどれだけ作るかは設定の割合で決める
+//     （config の departments、jobs/make.ts）。
+//   - 月次の作り変えは触らない。共通の札（season.json の common）の顔ぶれは月ごとに
+//     変わるので、skipCommon に今の common に無い名前があっても咎めない。
+
+export interface Departments {
+    readonly forms: readonly Form[];
+    /** 部門ごとの札。 */
+    readonly byForm: Readonly<Record<string, readonly Axis[]>>;
+    /** その部門には引かない共通の札（軸の名前）。 */
+    readonly skipCommon: Readonly<Record<string, readonly string[]>>;
+}
+
+/** 部門を読んで確かめる。部門が無ければ空。 */
+export function readDepartments(dir = DEPARTMENTS): Departments {
+    const path = join(dir, "departments.json");
+    if (!existsSync(path)) return { forms: [], byForm: {}, skipCommon: {} };
+    const list = forms((json(path) as { departments?: unknown }).departments, `${path}: departments`);
+    const byForm: Record<string, readonly Axis[]> = {};
+    const skipCommon: Record<string, readonly string[]> = {};
+    for (const form of list) {
+        for (const file of ["form.md", "work.ts", "meta.json", "twists.json"]) {
+            if (!existsSync(join(dir, form.id, file))) throw new Error(`departments/${form.id}/${file} がない`);
+        }
+        const twistPath = join(dir, form.id, "twists.json");
+        const twists = json(twistPath) as { axes?: unknown; skipCommon?: unknown };
+        byForm[form.id] = axes(twists.axes, `${twistPath}: axes`);
+        if (byForm[form.id].length < 2) throw new Error(`${twistPath}: 軸は二つ以上にする（毎回二枚引く）`);
+        const skip = twists.skipCommon ?? [];
+        if (!Array.isArray(skip) || skip.some(s => typeof s !== "string")) throw new Error(`${twistPath}: skipCommon は軸の名前の配列にする`);
+        skipCommon[form.id] = skip as string[];
+    }
+    return { forms: list, byForm, skipCommon };
+}
+
+let cachedDepartments: Departments | undefined;
+
+export function departments(): Departments {
+    return cachedDepartments ??= readDepartments();
+}
+
+/** 型か部門の手引き・実例のあるディレクトリ。 */
+export function formDir(id: string): string {
+    return departments().forms.some(f => f.id === id) ? join(DEPARTMENTS, id) : join(TEMPLATES, id);
+}

@@ -27,7 +27,9 @@ export function generateRequest(
     plan: Plan,
     persona: Persona | undefined,
     past: readonly PastAttempt[],
-    options: { maxOutputTokens: number; reasoningEffort: CompletionRequest["reasoningEffort"] }
+    options: { maxOutputTokens: number; reasoningEffort: CompletionRequest["reasoningEffort"] },
+    /** 同梱の画像の節（paint/brief.ts）。絵の無い作品では空文字。 */
+    pictures = ""
 ): CompletionRequest {
     const example = template(formOf(plan.form).id);
     const messages: Message[] = [
@@ -40,8 +42,9 @@ export function generateRequest(
                 persona: personaPrompt(persona),
                 // 実例はデータを抜いて渡す。そのまま渡すと写しが返ってくる。
                 template: thin(example),
-                avoid: avoidBrief(example)
-            })
+                avoid: avoidBrief(example),
+                pictures
+            }).replace(/\n{3,}/g, "\n\n").trim()
         }
     ];
     for (const attempt of past) {

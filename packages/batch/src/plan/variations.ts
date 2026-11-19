@@ -14,7 +14,7 @@
 
 import { formOf } from "./forms.js";
 import type { Plan } from "./planner.js";
-import { season, type Axis } from "./season.js";
+import { departments, season, type Axis } from "./season.js";
 
 export interface Twist {
     readonly axis: string;
@@ -61,9 +61,12 @@ export function drawTwist(form: string, past: readonly Plan[], random: () => num
     };
     // 型の作法とぶつかる共通の札は、その型には引かない（キャラクタ画面にはビットマップの
     // モードも、描き足しも無い）。どれを外すかは templates/<型>/twists.json の skipCommon。
+    // 部門（departments/）の札も同じ形で持っている。
     const { common, byForm, skipCommon } = season();
-    const skip = skipCommon[form] ?? [];
-    return [...draw(byForm[form] ?? [], 2), ...draw(common.filter(axis => !skip.includes(axis.name)), 2)];
+    const outside = departments();
+    const own = byForm[form] ?? outside.byForm[form] ?? [];
+    const skip = skipCommon[form] ?? outside.skipCommon[form] ?? [];
+    return [...draw(own, 2), ...draw(common.filter(axis => !skip.includes(axis.name)), 2)];
 }
 
 /** 企画の頼みに入れる文。 */

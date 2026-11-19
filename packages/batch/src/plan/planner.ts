@@ -1,10 +1,13 @@
 // 企画。過去作品の短い要約と制作ルールから、次の企画を決める。
 // 過去の全コードや会話履歴は渡さない。
 
+import { IMAGE_NAME } from "@fanm/work";
+import type { Picture } from "../paint/paint.js";
+import type { Aspect } from "../providers/painter.js";
 import type { CompletionRequest } from "../providers/provider.js";
 import { personaPrompt, type Persona } from "../persona/persona.js";
 import { fill, formBrief, prompt, system } from "../prompts.js";
-import { formOf, type Form } from "./forms.js";
+import { formOf, isDepartment, type Form } from "./forms.js";
 import { season } from "./season.js";
 import { twistBrief, type Twist } from "./variations.js";
 
@@ -27,6 +30,49 @@ export interface Plan {
     readonly durationFrames: number;
     /** 企画したときのシーズン（templates/season.json）。型と札を作り変えた効き目を、あとで比べるため。 */
     readonly season?: string;
+    /** 描かせる絵（D部門だけ）。企画が書き、描く段（paint/）が描いて作品に同梱する。 */
+    readonly pictures?: readonly Picture[];
+}
+
+/** 絵を頼む型か。いまは部門（D部門、一枚絵）だけ。 */
+export function wantsPictures(form: string | undefined): boolean {
+    return isDepartment(form);
+}
+
+/** 一作品に頼む絵の数の上限。一枚 30 秒ほどかかり、作品の容量にもなる。 */
+export const MAX_PICTURES = 2;
+
+const ASPECTS: readonly Aspect[] = ["4:3", "1:1", "3:4", "16:9"];
+
+/** 企画の pictures を読む。読めなければ、企画を頼み直す理由を投げる。 */
+function parsePictures(raw: unknown): Picture[] {
+    if (!Array.isArray(raw) || !raw.length) throw new Error("企画に pictures がない（一枚絵の型は絵を1〜2枚頼む）");
+    if (raw.length > MAX_PICTURES) throw new Error(`pictures が ${raw.length} 枚ある（${MAX_PICTURES} 枚まで）`);
+    const seen = new Set<string>();
+    return raw.map((p, i) => {
+        const { name, prompt, aspect } = (p ?? {}) as Partial<Picture>;
+        if (typeof name !== "string" || !IMAGE_NAME.test(name)) throw new Error(`pictures[${i}].name は英小文字で始まる英小文字・数字・_ にする`);
+        if (seen.has(name)) throw new Error(`pictures の name ${name} が二つある`);
+        seen.add(name);
+        if (typeof prompt !== "string" || !prompt.trim()) throw new Error(`pictures[${i}].prompt がない`);
+        const shape = aspect === undefined ? "4:3" : aspect;
+        if (!ASPECTS.includes(shape)) throw new Error(`pictures[${i}].aspect は ${ASPECTS.join(" / ")} のどれか`);
+        return { name, prompt: prompt.trim().slice(0, 2000), aspect: shape };
+    });
+}
+
+/** 企画の頼みの「条件」に入れる、素材の決まり。 */
+function assetsRule(form: string): string {
+    return wantsPictures(form)
+        ? "- 絵は企画の `pictures` で頼んだものが描かれて同梱される。それ以外の画像・音声ファイルや外部サービスは使えない。音は MML と PSG / FM 音源で作る。"
+        : "- 画像・音声ファイルや外部サービスは使えない。絵は描画命令と点の配列、音は MML と PSG / FM 音源で作る。";
+}
+
+/** 企画の頼みの「出力」に足す一文。 */
+function picturesRule(form: string): string {
+    return wantsPictures(form)
+        ? "一枚絵の型なので、この JSON に `pictures`（描かせる絵、1〜2枚）も足してください。書き方は型の手引きの「絵を頼む」にあります。"
+        : "";
 }
 
 /** 過去作品一覧の一行。型も見せる。同じ型の中でも違うものを作らせるため。 */
@@ -117,8 +163,10 @@ export function planRequest(
         worn: wornBrief(wornWords(past)),
         form: formBrief(form.id),
         twist: twistBrief(twist),
-        persona: personaPrompt(persona)
-    });
+        persona: personaPrompt(persona),
+        assets: assetsRule(form.id),
+        pictures: picturesRule(form.id)
+    }).replace(/\n{3,}/g, "\n\n").trim();
     return {
         messages: [system(), { role: "user", content }],
         maxOutputTokens,
@@ -149,6 +197,7 @@ export function parsePlan(text: string, form: Form, twist: readonly Twist[] = []
         msxFeatures: Array.isArray(raw.msxFeatures) ? raw.msxFeatures.map(String) : [],
         interactive: raw.interactive === true,
         durationFrames: Number(raw.durationFrames) || 2400,
-        season: season().season
+        season: season().season,
+        ...(wantsPictures(form.id) ? { pictures: parsePictures(raw.pictures) } : {})
     };
 }
