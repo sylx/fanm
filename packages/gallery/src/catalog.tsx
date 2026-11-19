@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { createRoot } from "react-dom/client";
 import { createPortal } from "react-dom";
-import { PAGE_SIZE, workURL, type CatalogEntry, type CatalogIndex } from "./catalog-entry.js";
+import { PAGE_SIZE, departmentLabel, workURL, type CatalogEntry, type CatalogIndex } from "./catalog-entry.js";
 import { DEFAULT_LEVEL, MUTED_KEY, VOLUME_KEY, gainFor, parseLevel } from "./volume.js";
 import { ORIGIN, SITE_DESCRIPTION, SITE_TITLE } from "../worker/render.js";
 
@@ -58,6 +58,7 @@ function updateDescription(work: CatalogEntry | null): void {
     };
     line("#work-author", work?.penName ? `作者：${work.penName}` : "");
     line("#work-model", work?.model ? `モデル：${work.model}` : "");
+    line("#work-department", departmentLabel(work?.department));
     document.title = work ? `${work.title} | fanM` : SITE_TITLE;
     const title = document.title;
     const description = work?.description ?? SITE_DESCRIPTION;
@@ -103,7 +104,7 @@ function App() {
     const oldest = params.get("order") === "oldest";
     const requestedPage = Math.max(1, Math.floor(Number(params.get("page")) || 1));
     const filtered = useMemo(() => {
-        const result = index?.items.filter(item => (!month || item.createdAt.startsWith(month)) && (!query || `${item.title} ${item.penName ?? ""} ${item.model ?? ""}`.toLocaleLowerCase().includes(query.toLocaleLowerCase()))) ?? [];
+        const result = index?.items.filter(item => (!month || item.createdAt.startsWith(month)) && (!query || `${item.title} ${item.penName ?? ""} ${item.model ?? ""} ${departmentLabel(item.department)}`.toLocaleLowerCase().includes(query.toLocaleLowerCase()))) ?? [];
         return oldest ? result.reverse() : result;
     }, [index, month, query, oldest]);
     const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -336,7 +337,7 @@ function App() {
             {loading ? <p role="status">読み込んでいます…</p> : !error && !cards.length ? <p>該当する作品がありません。</p> : <ul id="catalog">{cards.map(entry => <li key={entry.id}>
                 <a className="card" data-work={entry.id} aria-current={entry.id === route.id ? "true" : undefined} href={workURL(entry.id) + route.search} onClick={event => link(event, entry.id)}>
                     <span className="crt"><img src={entry.thumb} alt="" loading="lazy" /></span>
-                    <strong>{entry.title}</strong><span>{entry.description}</span>
+                    <strong>{entry.department && <b className="dept">{departmentLabel(entry.department)}</b>}{entry.title}</strong><span>{entry.description}</span>
                     <small className="foot"><time dateTime={entry.createdAt}>{date(entry.createdAt)}</time>{entry.model && <span className="model">{entry.penName && <b className="pen">{entry.penName}</b>}{entry.model}</span>}</small>
                 </a>
             </li>)}</ul>}

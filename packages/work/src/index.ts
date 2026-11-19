@@ -119,6 +119,11 @@ export interface WorkMeta extends WorkDescription {
      * プレイヤーはこれを読んでから作品を起動する。画像の無い作品にはない。
      */
     readonly images?: readonly string[];
+    /**
+     * シーズンの外の部門の作品なら、その名前（いまは "d" だけ）。ギャラリーは
+     * 「D部門」と出す。型（シーズンの作品）の作品にはない。
+     */
+    readonly department?: string;
 }
 
 /** mulberry32。小さく、どの環境でも同じ列を返す。 */

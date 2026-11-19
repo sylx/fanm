@@ -106,6 +106,14 @@ test("作者のペンネームは作品HTMLと索引に載り、無い作品で�
     assert.equal(catalogFiles([authored]).index.items[0].penName, "Golden<Snail>");
 });
 
+test("部門の作品は「D部門」と作品HTMLと索引に載り、型の作品では隠す", () => {
+    const picture = { ...entry, department: "d", images: ["castle"] };
+    assert.ok(renderWork(shell, picture).includes('<p id="work-department">D部門</p>'));
+    assert.ok(renderWork(shell, entry).includes('<p id="work-department" hidden></p>'));
+    assert.equal(catalogFiles([picture]).index.items[0].department, "d");
+    assert.equal("department" in catalogFiles([entry]).index.items[0], false);
+});
+
 test("再生の知らせは知っている作品だけを、作品・経路・国だけで数える", async () => {
     const points: { blobs?: string[]; doubles?: number[]; indexes?: string[] }[] = [];
     const env = {

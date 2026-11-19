@@ -16,6 +16,7 @@ import { join, resolve } from "node:path";
 import type { WorkDescription, WorkMeta } from "@fanm/work";
 import type { CheckReport } from "../check/check.js";
 import { IMAGES_DIR, imageNames } from "../check/images.js";
+import { isDepartment } from "../plan/forms.js";
 import type { Job } from "../jobs/job.js";
 import type { KnownAuthor } from "../persona/pen-name.js";
 import type { Plan } from "../plan/planner.js";
@@ -75,7 +76,8 @@ export class Archive {
             traits: job.persona?.traits,
             seed: job.seed,
             thumbnail: "thumbnail.png",
-            ...(images.length ? { images } : {})
+            ...(images.length ? { images } : {}),
+            ...(isDepartment(job.form) ? { department: job.form } : {})
         };
         copyFileSync(join(attemptDir, "work.ts"), join(pub, "work.ts"));
         if (images.length) cpSync(join(attemptDir, IMAGES_DIR), join(pub, IMAGES_DIR), { recursive: true });

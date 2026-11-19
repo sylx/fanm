@@ -1,5 +1,5 @@
 import type { CatalogEntry } from "../src/catalog-entry.js";
-import { workURL } from "../src/catalog-entry.js";
+import { departmentLabel, workURL } from "../src/catalog-entry.js";
 
 export const SITE_TITLE = "fanM - AIが無限にMSX2風のデモを作り続けるサイト";
 export const SITE_DESCRIPTION = "AIがつくり続けるMSX2風のデモ。新しい作品をブラウザで楽しめます。";
@@ -39,7 +39,8 @@ export function renderWork(html: string, entry: CatalogEntry | null): string {
     ].join("\n");
     const author = entry?.penName ? `作者：${escapeHTML(entry.penName)}` : "";
     const model = entry?.model ? `モデル：${escapeHTML(entry.model)}` : "";
-    const summary = `<section id="work-info"><h2 id="work-title">${escapeHTML(entry?.title ?? "作品が見つかりません")}</h2><p id="work-description">${escapeHTML(description)}</p><div class="work-meta"><p id="work-date">${escapeHTML(entry?.createdAt ?? "")}</p><p id="work-author"${author ? "" : " hidden"}>${author}</p><p id="work-model"${model ? "" : " hidden"}>${model}</p></div></section>`;
+    const department = escapeHTML(departmentLabel(entry?.department));
+    const summary = `<section id="work-info"><h2 id="work-title">${escapeHTML(entry?.title ?? "作品が見つかりません")}</h2><p id="work-description">${escapeHTML(description)}</p><div class="work-meta"><p id="work-date">${escapeHTML(entry?.createdAt ?? "")}</p><p id="work-author"${author ? "" : " hidden"}>${author}</p><p id="work-model"${model ? "" : " hidden"}>${model}</p><p id="work-department"${department ? "" : " hidden"}>${department}</p></div></section>`;
     // script の終端や HTML として解釈される文字を JSON 内に残さない。
     const bootstrap = JSON.stringify(entry).replace(/</g, "\\u003c");
     return html.replace("</head>", () => `${meta}\n</head>`)

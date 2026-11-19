@@ -49,6 +49,10 @@ ul { list-style: none; display: grid; gap: 16px; padding: 0; margin: 0;
   border-radius: inherit;
 }
 .card strong { font-weight: 600; letter-spacing: .08em; }
+/* 部門の作品の札（「D部門」）。題の頭に小さく付ける。 */
+.card .dept { display: inline-block; margin-right: 6px; padding: 0 5px; border: 1px solid var(--fg);
+              border-radius: 3px; font-size: 11px; font-weight: 600; letter-spacing: .06em;
+              line-height: 1.5; vertical-align: 1px; }
 .card span { color: var(--dim); font-size: 13px; }
 /* 最後の行。日付は左、書いたAIの名前は右。名前が長いときは字を詰める
    ばかりで、日付を押し出さない。作者のペンネームがあればモデル名の上に置く。 */

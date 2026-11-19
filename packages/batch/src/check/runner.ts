@@ -8,7 +8,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { encodePNG } from "fantasy-msx/tools/png.js";
 import type { Scenario, WorkFactory } from "@fanm/work";
-import { runHeadless } from "./headless.js";
+import { emptyImageUse, runHeadless, type ImageUse } from "./headless.js";
 import { loadImages } from "./images.js";
 import { measure, type ImageStats } from "./stats.js";
 
@@ -28,6 +28,8 @@ export interface RunnerResult {
     readonly slow?: boolean;
     readonly captures: readonly RunnerCapture[];
     readonly msPerFrame: number;
+    /** 同梱の絵の使われ方。絵の無い作品では数えない。 */
+    readonly imageUse?: ImageUse;
 }
 
 /** 束ねた入口から呼ばれる。factory は作品の default export。 */
@@ -40,9 +42,11 @@ export function record(factory: unknown, scenarioPath: string, outDir: string): 
         // 途中経過。時間切れで殺されたとき、親がどこまで進んだかを知るため。
         const progress = join(outDir, "progress.json");
         const images = loadImages(outDir);
+        const imageUse = emptyImageUse();
         const run = runHeadless(factory as WorkFactory, scenario, frame => {
             writeFileSync(progress, JSON.stringify({ frame, ms: performance.now() - started }));
-        }, images);
+        }, images, imageUse);
+        const use = Object.keys(images).length ? { imageUse } : {};
         let previous: Uint32Array | undefined;
         const captures = run.captures.map(capture => {
             const file = `${capture.frame}.png`;
@@ -54,10 +58,10 @@ export function record(factory: unknown, scenarioPath: string, outDir: string): 
         });
         const msPerFrame = (performance.now() - started) / Math.max(1, run.ok ? scenario.frames : run.frame);
         result = run.ok
-            ? { ok: true, captures, msPerFrame }
+            ? { ok: true, captures, msPerFrame, ...use }
             : "slow" in run
-                ? { ok: false, slow: true, errorFrame: run.frame, captures, msPerFrame: run.msPerFrame }
-                : { ok: false, error: run.error, errorFrame: run.frame, captures, msPerFrame };
+                ? { ok: false, slow: true, errorFrame: run.frame, captures, msPerFrame: run.msPerFrame, ...use }
+                : { ok: false, error: run.error, errorFrame: run.frame, captures, msPerFrame, ...use };
     } catch (e) {
         result = { ok: false, error: e instanceof Error ? e.stack ?? e.message : String(e), captures: [], msPerFrame: 0 };
     }

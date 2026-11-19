@@ -1,6 +1,6 @@
 // 作品の検査をまとめて行い、採否と、AIへ返す所見を出す。
 //
-//     静的検査 → 型検査 → 束ねて隔離実行・撮影 → 画面の数値で判定
+//     静的検査 → 型検査 → 束ねて隔離実行・撮影 → 画面の数値で判定 → 同梱の絵を使ったか
 //
 // 静かな作品やゆっくり変わる作品は落とさない。落とすのは、明らかに
 // 動いていないもの・何も映っていないもの・描画が溜まり続けるものだけ。
@@ -12,6 +12,7 @@ import { runIsolated } from "./isolated.js";
 import { imageNames } from "./images.js";
 import { DEFAULT_MAX_OVERLAP, overlap, type Overlap } from "./overlap.js";
 import { slowAdvice } from "./pace.js";
+import type { ImageUse } from "./headless.js";
 import type { RunnerCapture } from "./runner.js";
 import { staticCheck } from "./static.js";
 import { typecheck } from "./typecheck.js";
@@ -31,7 +32,7 @@ export interface CheckOptions {
 
 export interface CheckReport {
     readonly ok: boolean;
-    readonly stage: "static" | "overlap" | "typecheck" | "build" | "timeout" | "crash" | "runtime" | "screen" | "passed";
+    readonly stage: "static" | "overlap" | "typecheck" | "build" | "timeout" | "crash" | "runtime" | "screen" | "picture" | "passed";
     /** AIへそのまま返せる、失敗の理由。 */
     readonly problems: readonly string[];
     /** 画面の様子の文章。成否にかかわらず付ける。 */
@@ -143,6 +144,29 @@ function judgeScreen(captures: readonly RunnerCapture[]): string[] {
     return problems;
 }
 
+/** 同梱の絵の使われ方の所見。絵の無い作品では空文字。 */
+function describeImages(use: ImageUse | undefined): string {
+    if (!use) return "";
+    if (!use.reduced.length) return "\n- 同梱の絵: どれも減色していない";
+    return `\n- 同梱の絵: ${use.reduced.join(", ")} を減色（${use.reducedPixels}画素）、減色のあとに置いた画素 ${use.drawnPixels}`;
+}
+
+/**
+ * 同梱の絵を画面に出したか。出していない作品は、絵を同梱した意味が無い。
+ * どの絵から作った画素かまでは追わない（headless.ts の watchImages）ので、
+ * 一枚も減色していない・減色しても何も置いていない、の二つだけを落とす。
+ */
+function judgeImages(names: readonly string[], use: ImageUse | undefined): string[] {
+    if (!names.length || !use) return [];
+    const problems = names
+        .filter(name => !use.reduced.includes(name))
+        .map(name => `env.images.${name} を一度も ctx.image.reduce に渡していない。同梱した絵は画面に出す（型の手引きの「絵を使う」）。`);
+    if (use.reduced.length && use.drawnPixels === 0) {
+        problems.push("絵を減色したが、画面に置いていない。reduce の結果を ctx.image.drawNow（または draw）に渡す。");
+    }
+    return problems;
+}
+
 export async function checkWork(dir: string, seed: number, options: CheckOptions = {}): Promise<CheckReport> {
     const workPath = join(dir, "work.ts");
     const meta = JSON.parse(readFileSync(join(dir, "meta.json"), "utf8")) as WorkDescription;
@@ -169,7 +193,7 @@ export async function checkWork(dir: string, seed: number, options: CheckOptions
     if (run.stage !== "run") return fail(run.stage, [run.error]);
 
     const { result } = run;
-    const observations = describe(result.captures, scenario);
+    const observations = describe(result.captures, scenario) + describeImages(result.imageUse);
     if (result.slow) {
         return fail("timeout", [slowAdvice(scenario.frames, result.errorFrame ?? 0, result.msPerFrame)], result.captures, observations);
     }
@@ -178,6 +202,9 @@ export async function checkWork(dir: string, seed: number, options: CheckOptions
     }
     const screen = judgeScreen(result.captures);
     if (screen.length) return fail("screen", screen, result.captures, observations);
+
+    const pictures = judgeImages(images, result.imageUse);
+    if (pictures.length) return fail("picture", pictures, result.captures, observations);
 
     const candidates = result.captures.slice(Math.floor(result.captures.length / 2));
     const thumbnail = candidates.reduce((best, c) => c.stats.colors > best.stats.colors ? c : best, candidates[0]);
